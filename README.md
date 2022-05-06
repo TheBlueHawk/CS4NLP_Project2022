@@ -42,6 +42,14 @@ Evaluate the predictions with which you can further evaluate with the following 
 python evaluator/evaluator.py eval --test_file dataset/test_9442.tsv --prediction_file roberta_output/eval_outputs_large.txt
 ```
 Modify `run_roberta_baseline.sh` to switch between `roberta-base` and `roberta-large`.
+
+### HuggingFace models
+Use the following command to reproduce predictions for any HF model: 
+```bash
+sh experiments/auto/run_auto_baseline.sh <model-name>
+```
+where `model-name` has to be replaced with the name of the model as it is listed on HuggingFace. Predictions and test scores (EM and F1) will be saved in the directory `./outputs/<model-name>`.
+
 ### ESIM baseline: 
 Releasing soon after some polish
 
