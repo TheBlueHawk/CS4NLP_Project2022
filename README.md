@@ -18,6 +18,8 @@ First install required packages with:
 pip install -r experiments/bert/requirements.txt
 ```
 
+### BERT
+
 Your the following command to reproduce BERT predictions under `./bert_output`: 
 ```bash
 sh experiments/bert/run_bert_baseline.sh
@@ -28,7 +30,20 @@ Evaluate the predictions with which you can further evaluate with the following 
 python evaluator/evaluator.py eval --test_file dataset/test_9442.tsv --prediction_file bert_output/eval_outputs.txt
 ```
 
-ESIM baseline: Releasing soon after some polish
+### RoBERTa
+Your the following command to reproduce RoBERTa predictions under `./roberta_output`: 
+```bash
+sh experiments/roberta/run_roberta_baseline.sh
+```
+
+Evaluate the predictions with which you can further evaluate with the following command: 
+
+```bash 
+python evaluator/evaluator.py eval --test_file dataset/test_9442.tsv --prediction_file roberta_output/eval_outputs_large.txt
+```
+Modify `run_roberta_baseline.sh` to switch between `roberta-base` and `roberta-large`.
+### ESIM baseline: 
+Releasing soon after some polish
 
 ## Citation
 See the following paper:
