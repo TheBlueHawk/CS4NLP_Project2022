@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-python experiments/roberta/run_classifier.py \
+python3 experiments/roberta/run_classifier.py \
   --task_name TEMPORAL \
   --do_train \
   --do_eval \
@@ -12,4 +12,4 @@ python experiments/roberta/run_classifier.py \
   --learning_rate 2e-5 \
   --num_train_epochs 10 \
   --output_dir ./roberta_output \
-  --cuda 4
+  --cuda 0
