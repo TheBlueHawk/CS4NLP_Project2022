@@ -1,4 +1,10 @@
-# MC-TACO 🌮
+# Installation instructions
+
+1. Our repo is tested on Python 3.8.
+1. Install torch, torchvision, torchtext, torchmetrics following the instructions on https://pytorch.org/get-started/locally
+1. `pip install -r requirements.txt`
+
+# MC-TACO 🌮  (original repository documentation)
 Dataset and code for “Going on a vacation” takes longer than “Going for a walk”: A Study of Temporal Commonsense Understanding EMNLP 2019. ([link](https://arxiv.org/abs/1909.03065))
 
 ## Dataset
