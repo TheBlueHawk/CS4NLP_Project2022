@@ -1,0 +1,8 @@
+cs4nlp/
+CS4NLP_Project2022-scripts/
+.idea/
+.ipynb_checkpoints/
+env/
+venv/
+wandb/
+*.pyc
