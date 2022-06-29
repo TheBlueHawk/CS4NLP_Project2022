@@ -123,7 +123,7 @@ class SMARTLoss(nn.Module):
         loss_last_fn: Callable = None, 
         norm_fn: Callable = inf_norm, 
         num_steps: int = 1,
-        step_size: float = 1e-3, 
+        step_size: float = 1e-3,   # I.E learning rate
         epsilon: float = 1e-6,
         noise_var: float = 1e-5
     ) -> None:
@@ -147,16 +147,19 @@ class SMARTLoss(nn.Module):
             state_perturbed = self.eval_fn(embed_perturbed)
             # Return final loss if last step (undetached state)
             if i == self.num_steps: 
-                return self.loss_last_fn(state_perturbed, state) 
+                return self.loss_last_fn(state_perturbed, state)
+                # Need to be able to back-propgate through model output in the return value.
+
             # Compute perturbation loss (detached state)
             loss = self.loss_fn(state_perturbed, state.detach())
             # Compute noise gradient ∂loss/∂noise
             noise_gradient, = torch.autograd.grad(loss, noise)
-            # Move noise towards gradient to change state as much as possible 
+            # Move noise towards gradient to change state as much as possible
             step = noise + self.step_size * noise_gradient 
             # Normalize new noise step into norm induced ball 
             step_norm = self.norm_fn(step)
             noise = step / (step_norm + self.epsilon)
+
             # Reset noise gradients for next step
             noise = noise.detach().requires_grad_()
 
@@ -182,6 +185,7 @@ def sym_kl_loss(input, target, reduction='sum', alpha=1.0):
 
 
 def js_loss(input, target, reduction='sum', alpha=1.0):
+    # NOTE(shwang): Seems to pass muster.
     mean_proba = 0.5 * (F.softmax(input.detach(), dim=-1) + F.softmax(target.detach(), dim=-1))
     return alpha * (F.kl_div(
         F.log_softmax(input, dim=-1),
@@ -195,81 +199,136 @@ def js_loss(input, target, reduction='sum', alpha=1.0):
 
 
 class SMARTClassificationModel(nn.Module):
+    """
+    Forward, in addition to returning the model output, also returns the
+    """
     # b: batch_size, s: sequence_length, d: hidden_size , n: num_labels
 
-    def __init__(self, model, weight, radius):
+    def __init__(self, model, smart_weight, radius, js_finish):
         super().__init__()
         self.model = model
-        self.weight = weight
+        assert smart_weight >= 0, f"Negative value {smart_weight} not allowed"
+        self.smart_weight = smart_weight
         self.radius = radius
+        self.js_finish = js_finish
 
     def forward(self, input_ids, attention_mask, labels):
         # input_ids: (b, s), attention_mask: (b, s), labels: (b,)
 
-        embed = self.model.roberta.embeddings(input_ids) # (b, s, d)
+        # Allow bert and deberta?
+        embed = self.model.roberta.embeddings(input_ids)  # (b, s, d)
 
         def eval(embed):
-            outputs = self.model.roberta(inputs_embeds=embed, attention_mask=attention_mask) # (b, s, d)
-            pooled = outputs[0] # (b, d)
-            logits = self.model.classifier(pooled) # (b, n)
+            outputs = self.model.roberta(inputs_embeds=embed, attention_mask=attention_mask)
+            # pooled = outputs['last_hidden_state']  # (b, d)
+            pooled = outputs[0]  # (b, d)
+            logits = self.model.classifier(pooled)  # (b, n)
             return logits
 
         def norm(x):
             return torch.norm(x, p=float('inf'), dim=-1, keepdim=True) / self.radius
 
-        smart_loss_fn = SMARTLoss(eval_fn=eval, loss_fn=kl_loss, loss_last_fn=js_loss, norm_fn=norm)
+        if self.js_finish:
+            loss_last_fn = js_loss
+        else:
+            loss_last_fn = sym_kl_loss
+
+        smart_loss_fn = SMARTLoss(
+            eval_fn=eval,
+            loss_fn=kl_loss, loss_last_fn=loss_last_fn, norm_fn=norm)
         state = eval(embed)
         loss = F.cross_entropy(state.view(-1, 2), labels.view(-1))
-        if embed.requires_grad and self.weight > 0:
+        # if embed.requires_grad and self.smart_weight > 0:
+            # Embed should always require_grad. Otherwise this would be a silent skip of the SMART Loss, which would
+            # be very bad for us.
+        # TODO(shwang): Return a stats_dict here so that we can log smart_loss
+        #    as well.
+        if embed.requires_grad and self.smart_weight > 0:
             smart_loss = smart_loss_fn(embed, state)
-            loss += self.weight * smart_loss
+            loss += self.smart_weight * smart_loss
+        else:
+            smart_loss = 0.0
 
-        return state, loss
+        stats_dict = dict()
+        stats_dict["smart_loss"] = float(smart_loss)
+        return state, loss, stats_dict
 
 
 class TextClassificationModel(pl.LightningModule):
     def __init__(
         self,
         model: nn.Module,
-        lr: float = 3e-5
+        lr: float = 3e-5,
+        weight_decay: float = 0,
     ):
         super().__init__()
         self.model = model
         self.lr = lr
-        metrics = MetricCollection([ Accuracy(), F1Score() ])
-        self.train_metrics = metrics.clone(prefix='train_')
-        self.valid_metrics = metrics.clone(prefix='val_')
+        assert weight_decay >= 0
+        self.weight_decay = weight_decay
+        metrics = MetricCollection([Accuracy(), F1Score()])
+        self.train_metrics = metrics.clone(prefix='train/')
+        self.valid_metrics = metrics.clone(prefix='val/')
 
-    def configure_optimizers(self):
-        optimizer = torch.optim.AdamW(self.model.parameters(), lr=self.lr)
+    def configure_optimizers(self, selective_decay=False):
+        if selective_decay:
+            no_decay = ['bias', 'LayerNorm.weight']
+            optimizer_grouped_parameters = [
+                {'params': [p for n, p in self.model.named_parameters()
+                            if not any(nd in n for nd in no_decay)],
+                 'weight_decay': self.weight_decay},  # TODO(shwang): Or whatever weight decay.
+                {'params': [p for n, p in self.model.named_parameters()
+                            if any(nd in n for nd in no_decay)],
+                 'weight_decay': 0.0}
+            ]
+        else:
+            optimizer_grouped_parameters = [
+                {'params': self.model.parameters(), 'weight_decay': self.weight_decay}
+            ]
+
+        optimizer = torch.optim.AdamW(optimizer_grouped_parameters, lr=self.lr,
+                                      weight_decay=self.weight_decay)
         return optimizer
 
     def training_step(self, batch, batch_idx):
         input_ids, attention_masks, labels = batch
         # Compute output
-        outputs, loss = self.model(input_ids = input_ids, attention_mask = attention_masks, labels = labels)
+        outputs, loss, stats = self.model(input_ids=input_ids, attention_mask=attention_masks, labels=labels)
         labels_pred = torch.argmax(outputs, dim=1)
         # Compute metrics
         metrics = self.train_metrics(labels, labels_pred)
+
         # Log loss and metrics
-        self.log("train_loss", loss, on_step=True)
+        def l2_squared(parameters):
+            result = 0
+            with th.no_grad():
+                for p in parameters:
+                    result += th.norm(p) ** 2
+            return result
+
+        self.log("train/loss", loss, on_step=True)
+        est_weight_decay = self.weight_decay * l2_squared(self.model.parameters())
+        self.log("train/est_weight_decay", est_weight_decay, on_step=True)
         self.log_dict(metrics, on_step=True, on_epoch=True)
+        self.log_dict(stats, on_step=True, on_epoch=True)
         return loss
 
     def validation_step(self, batch, batch_idx):
         input_ids, attention_masks, labels = batch
         # Compute output
-        outputs, loss = self.model(input_ids = input_ids, attention_mask = attention_masks, labels = labels)
+        outputs, loss, stats = self.model(input_ids=input_ids, attention_mask=attention_masks, labels=labels)
         labels_pred = torch.argmax(outputs, dim=1)
         # Compute metrics
         metrics = self.valid_metrics(labels, labels_pred)
+
         # Log loss and metrics
         self.log("valid_loss", loss, on_step=True)
         self.log_dict(metrics, on_step=True, on_epoch=True)
+        self.log_dict(stats, on_step=True, on_epoch=True)
         return loss
 
 
-DEFAULT_NAME = "unamed_mctaco_tune_run"
+DEFAULT_NAME = None
 DEFAULT_GROUP = "NO_GROUP"
 
 LOG_ROOT = pathlib.Path("logs")
@@ -279,21 +338,33 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("-n", "--name", default=DEFAULT_NAME)
     parser.add_argument("-g", "--group", default=DEFAULT_GROUP)
-    parser.add_argument("--gpus", type=int, default=None, help="Leave unspecified to automatically detect GPU.")
-    parser.add_argument("--epochs", type=int, default=15)
-    parser.add_argument("--batch-size", type=int, default=32)
-    parser.add_argument("--smart-loss-weight", type=float, default=1.0)
-    parser.add_argument("--smart-loss-radius", type=float, default=1.0)
+    parser.add_argument("-p", "--project", default="cs4nlp-shwang-weight-decay")
+    parser.add_argument(
+        "--gpus", type=int, default=1,
+        help="Use None to automatically detect GPU",
+    )
+    parser.add_argument("-l", "--learning-rate", "--lr", type=float, default=3e-5)
+    parser.add_argument("-e", "--epochs", type=int, default=15)
+    parser.add_argument("-b", "--batch-size", type=int, default=32)
+    parser.add_argument("--js_finish", action="store_true")
+    parser.add_argument("--entity", default="sh-wang")
+    parser.add_argument("--smart-loss-weight", "--smart-weight", type=float, default=0.0)
+    parser.add_argument("--smart-loss-radius", "--smart-radius", type=float, default=0.25)
+    parser.add_argument("--weight-decay", "-w", type=float, default=0.0)
     parser.add_argument("--pretrained-model", type=str, default='roberta-base')
     parser.add_argument("--sequence-length", type=int, default=128)
     parser.add_argument("--seed", type=int, default=SEED_DEFAULT)
     args = parser.parse_args()
 
-    wandb.init(dir=LOG_ROOT / "wandb")
     wandb.login()
     pl.seed_everything(args.seed)
 
     tokenizer = AutoTokenizer.from_pretrained(args.pretrained_model)
+    if 'deberta-v3' in tokenizer.name_or_path:
+        # This wasn't configured by the maintainers as of May 15 2022, leading to errors.
+        # Adding it in for them.
+        tokenizer.max_length = 512
+        tokenizer.model_max_length = 512
     architecture = AutoModelForSequenceClassification.from_pretrained(args.pretrained_model)
 
     datamodule = MCTACODatamodule(tokenizer, batch_size=args.batch_size, sequence_length=args.sequence_length)
@@ -301,23 +372,30 @@ def main():
 
     smart_architecture = SMARTClassificationModel(
         architecture,
-        weight=args.smart_loss_weight,
+        smart_weight=args.smart_loss_weight,
         radius=args.smart_loss_radius,
+        js_finish=args.js_finish,
     )
-    model = TextClassificationModel(smart_architecture)
+    model = TextClassificationModel(smart_architecture, lr=args.learning_rate, weight_decay=args.weight_decay)
     # input_ids, input_mask, labels = next(iter(datamodule.train_dataloader()))
     # output, loss = smart_architecture(input_ids, input_mask, labels)
 
     # Wandb Logger
+    pl_root_dir = LOG_ROOT / "pl"
+    wandb_root_dir = LOG_ROOT / "wandb"
+    pl_root_dir.mkdir(parents=True, exist_ok=True)
+    wandb_root_dir.mkdir(parents=True, exist_ok=True)
     logger = pl.loggers.wandb.WandbLogger(
-        project='cs4nlp-shwang',
-        entity='nextmachina',
+        project=args.project,
+        entity=args.entity,
+        save_dir=wandb_root_dir,
         name=args.name,
         group=args.group,
     )
     # Callbacks
     cb_progress_bar = pl.callbacks.RichProgressBar()
     cb_model_summary = pl.callbacks.RichModelSummary()
+
     # Train
     n_gpus = args.gpus if args.gpus is not None else int(th.cuda.is_available())
     trainer = pl.Trainer(
@@ -325,7 +403,7 @@ def main():
         callbacks=[cb_progress_bar, cb_model_summary],
         max_epochs=args.epochs,
         gpus=n_gpus,
-        default_root_dir=LOG_ROOT / "pl",
+        default_root_dir=pl_root_dir,
         enable_checkpointing=False,
     )
     trainer.logger.log_hyperparams(args)
