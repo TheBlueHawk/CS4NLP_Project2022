@@ -83,13 +83,14 @@ class MCTACODataset(Dataset):
 
 
 class MCTACODatamodule(pl.LightningDataModule):
-    def __init__(self, tokenizer, batch_size: int, sequence_length: int):
+    def __init__(self, tokenizer, batch_size: int, sequence_length: int, num_workers: int = 8):
         super().__init__()
         self.tokenizer = tokenizer
         self.batch_size = batch_size
         self.sequence_length = sequence_length
         self.dataset_train = None
         self.dataset_valid = None
+        self.num_workers = num_workers
 
     def setup(self, stage=None):
         self.dataset_train = MCTACODataset(
@@ -189,9 +190,14 @@ class ALICEClassificationModel(nn.Module):
     def __init__(self, extracted_model):
         super().__init__()
         self.model = extracted_model
-        self.vat_loss = ALICELoss(model=extracted_model, loss_fn=kl_loss, alpha=args.vat_loss_weight step_size=args.step_size,
+        self.vat_loss = ALICELoss(
+            model=extracted_model,
+            loss_fn=kl_loss,
+            alpha=args.vat_loss_weight,
+            step_size=args.step_size,
             epsilon=args.epsilon,
-            noise_var=args.noise_var)
+            noise_var=args.noise_var,
+        )
 
     def forward(self, input_ids, attention_mask, labels):
         """input_ids: (b, s), attention_mask: (b, s), labels: (b,)"""
@@ -213,9 +219,13 @@ class ALICEPPClassificationModel(nn.Module):
         super().__init__()
         self.model = extracted_model
         self.vat_loss = ALICEPPLoss(
-            model=extracted_model, loss_fn=kl_loss, num_layers=self.model.num_layers, alpha=args.vat_loss_weight step_size=args.step_size,
+            model=extracted_model,
+            loss_fn=kl_loss,
+            num_layers=self.model.num_layers,
+            alpha=args.vat_loss_weight,
+            step_size=args.step_size,
             epsilon=args.epsilon,
-            noise_var=args.noise_var
+            noise_var=args.noise_var,
         )
 
     def forward(self, input_ids, attention_mask, labels):
