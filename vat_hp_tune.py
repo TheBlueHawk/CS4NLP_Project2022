@@ -34,6 +34,7 @@ parser.add_argument(
 parser.add_argument("--step-size", type=float, default=1e-3)
 parser.add_argument("--epsilon", type=float, default=1e-6)
 parser.add_argument("--noise-var", type=float, default=1e-5)
+parser.add_argument("--lr", type=float, default=3e-5)
 args = parser.parse_args()
 
 wandb.login()
@@ -298,7 +299,7 @@ elif args.vat == "ALICE":
     vat_architecture = ALICEClassificationModel(extracted_model)
 else:
     vat_architecture = ALICEPPClassificationModel(extracted_model)
-model = TextClassificationModel(vat_architecture)
+model = TextClassificationModel(vat_architecture, lr=args.lr)
 
 
 # Wandb Logger

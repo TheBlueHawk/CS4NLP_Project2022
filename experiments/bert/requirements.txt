@@ -1,11 +1,9 @@
 pytorch-pretrained-bert==0.3.0
-torchtext
 datasets==1.18.3
 tokenizers==0.11.5
 transformers==4.18.0
 pytorch-lightning==1.5.10
 wandb==0.12.14
 rich==12.2.0
-smart-pytorch==0.0.3
 argparse==1.4.0
 vat-pytorch==0.0.3
