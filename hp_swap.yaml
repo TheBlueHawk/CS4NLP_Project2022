@@ -1,0 +1,25 @@
+program: vat_hp_tune.py
+method: random
+metric:
+  goal: minimize
+  name: valid_loss
+parameters:
+  lr:
+    values: [1e-5, 3e-5, 1e-4]
+  batch-size:
+    values: [16, 32, 64]
+  vat-loss-weight:
+    values: [0.5, 1, 2]
+  vat-loss-radius: 
+    values: [0.05, 0.1, 0.3, 0.5,1,2]
+  step-size:
+    values: [2e-4, 5e-4, 1e-3, 2e-3]
+  epsilon:
+    values: [5e-7, 1e-6, 2e-6, 5e-6, 1e-5]
+  noise-var:
+    values: [5e-6, 1e-5, 2e-5, 5e-5, 1e-4]
+early_terminate:
+  type: hyperband
+  s: 2
+  eta: 3
+  max_iter: 20

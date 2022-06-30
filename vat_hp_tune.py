@@ -22,6 +22,7 @@ parser.add_argument("-n", "--name", default=DEFAULT_NAME)
 parser.add_argument("-g", "--group", default=DEFAULT_GROUP)
 parser.add_argument("--gpus", type=int, default=0)
 parser.add_argument("--epochs", type=int, default=20)
+parser.add_argument("--lr", type=float, default=3e-5)
 parser.add_argument("--batch-size", type=int, default=32)
 parser.add_argument("--vat-loss-weight", type=float, default=1.0)
 parser.add_argument("--vat-loss-radius", type=float, default=1.0)
@@ -34,12 +35,14 @@ parser.add_argument(
 parser.add_argument("--step-size", type=float, default=1e-3)
 parser.add_argument("--epsilon", type=float, default=1e-6)
 parser.add_argument("--noise-var", type=float, default=1e-5)
-parser.add_argument("--lr", type=float, default=3e-5)
 args = parser.parse_args()
 
 # Use wandb login directly in the terminal before running the script
-#wandb.login()
-pl.seed_everything(args.seed)
+# wandb.login()
+wandb.init(config=args)
+config = wandb.config
+
+pl.seed_everything(config.seed)
 
 
 class MCTACODataset(Dataset):
@@ -85,7 +88,9 @@ class MCTACODataset(Dataset):
 
 
 class MCTACODatamodule(pl.LightningDataModule):
-    def __init__(self, tokenizer, batch_size: int, sequence_length: int, num_workers: int = 8):
+    def __init__(
+        self, tokenizer, batch_size: int, sequence_length: int, num_workers: int = 8
+    ):
         super().__init__()
         self.tokenizer = tokenizer
         self.batch_size = batch_size
@@ -165,9 +170,9 @@ class SMARTClassificationModel(nn.Module):
             model=extracted_model,
             loss_fn=kl_loss,
             loss_last_fn=sym_kl_loss,
-            step_size=args.step_size,
-            epsilon=args.epsilon,
-            noise_var=args.noise_var,
+            step_size=config.step_size,
+            epsilon=config.epsilon,
+            noise_var=config.noise_var,
         )
 
     def forward(self, input_ids, attention_mask, labels):
@@ -195,10 +200,10 @@ class ALICEClassificationModel(nn.Module):
         self.vat_loss = ALICELoss(
             model=extracted_model,
             loss_fn=kl_loss,
-            alpha=args.vat_loss_weight,
-            step_size=args.step_size,
-            epsilon=args.epsilon,
-            noise_var=args.noise_var,
+            alpha=config.vat_loss_weight,
+            step_size=config.step_size,
+            epsilon=config.epsilon,
+            noise_var=config.noise_var,
         )
 
     def forward(self, input_ids, attention_mask, labels):
@@ -224,10 +229,10 @@ class ALICEPPClassificationModel(nn.Module):
             model=extracted_model,
             loss_fn=kl_loss,
             num_layers=self.model.num_layers,
-            alpha=args.vat_loss_weight,
-            step_size=args.step_size,
-            epsilon=args.epsilon,
-            noise_var=args.noise_var,
+            alpha=config.vat_loss_weight,
+            step_size=config.step_size,
+            epsilon=config.epsilon,
+            noise_var=config.noise_var,
         )
 
     def forward(self, input_ids, attention_mask, labels):
@@ -285,30 +290,30 @@ class TextClassificationModel(pl.LightningModule):
         return loss
 
 
-tokenizer = AutoTokenizer.from_pretrained(args.pretrained_model)
+tokenizer = AutoTokenizer.from_pretrained(config.pretrained_model)
 datamodule = MCTACODatamodule(
-    tokenizer, batch_size=args.batch_size, sequence_length=args.sequence_length
+    tokenizer, batch_size=config.batch_size, sequence_length=config.sequence_length
 )
 datamodule.setup()
 
 extracted_model = ExtractedRoBERTa()
-if args.vat == "SMART":
+if config.vat == "SMART":
     vat_architecture = SMARTClassificationModel(
-        extracted_model, weight=args.vat_loss_weight, radius=args.vat_loss_radius
+        extracted_model, weight=config.vat_loss_weight, radius=config.vat_loss_radius
     )
-elif args.vat == "ALICE":
+elif config.vat == "ALICE":
     vat_architecture = ALICEClassificationModel(extracted_model)
 else:
     vat_architecture = ALICEPPClassificationModel(extracted_model)
-model = TextClassificationModel(vat_architecture, lr=args.lr)
+model = TextClassificationModel(vat_architecture, lr=config.lr)
 
 
 # Wandb Logger
 logger = pl.loggers.wandb.WandbLogger(
     project="cs4nlp-vat-hp",
     entity="nextmachina",
-    name=args.name,
-    group=args.group,
+    name=config.name,
+    group=config.group,
 )
 # Callbacks
 cb_progress_bar = pl.callbacks.RichProgressBar()
@@ -317,9 +322,9 @@ cb_model_summary = pl.callbacks.RichModelSummary()
 trainer = pl.Trainer(
     logger=logger,
     callbacks=[cb_progress_bar, cb_model_summary],
-    max_epochs=args.epochs,
-    gpus=args.gpus,
+    max_epochs=config.epochs,
+    gpus=config.gpus,
 )
-trainer.logger.log_hyperparams(args)
+trainer.logger.log_hyperparams(config)
 trainer.fit(model=model, datamodule=datamodule)
 wandb.finish()
