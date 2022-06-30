@@ -37,7 +37,8 @@ parser.add_argument("--noise-var", type=float, default=1e-5)
 parser.add_argument("--lr", type=float, default=3e-5)
 args = parser.parse_args()
 
-wandb.login()
+# Use wandb login directly in the terminal before running the script
+#wandb.login()
 pl.seed_everything(args.seed)
 
 
