@@ -200,6 +200,7 @@ class ALICEClassificationModel(nn.Module):
         self.vat_loss = ALICELoss(
             model=extracted_model,
             loss_fn=kl_loss,
+            num_classes=2,
             alpha=config.vat_loss_weight,
             step_size=config.step_size,
             epsilon=config.epsilon,
@@ -228,6 +229,7 @@ class ALICEPPClassificationModel(nn.Module):
         self.vat_loss = ALICEPPLoss(
             model=extracted_model,
             loss_fn=kl_loss,
+            num_classes=2,
             num_layers=self.model.num_layers,
             alpha=config.vat_loss_weight,
             step_size=config.step_size,
