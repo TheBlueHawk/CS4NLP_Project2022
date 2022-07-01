@@ -7,7 +7,7 @@ parameters:
   lr:
     values: [1e-5, 3e-5, 1e-4]
   batch-size:
-    values: [16, 32, 64]
+    value: 16
   vat-loss-weight:
     values: [0.5, 1, 2]
   vat-loss-radius: 
