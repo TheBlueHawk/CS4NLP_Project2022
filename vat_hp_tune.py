@@ -20,7 +20,7 @@ DEFAULT_GROUP = "NO_GROUP"
 parser = argparse.ArgumentParser()
 parser.add_argument("-n", "--name", default=DEFAULT_NAME)
 parser.add_argument("-g", "--group", default=DEFAULT_GROUP)
-parser.add_argument("--gpus", type=int, default=0)
+parser.add_argument("--gpus", type=int, default=1)
 parser.add_argument("--epochs", type=int, default=20)
 parser.add_argument("--lr", type=float, default=3e-5)
 parser.add_argument("--batch-size", type=int, default=32)
