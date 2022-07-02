@@ -7,3 +7,4 @@ wandb==0.12.14
 rich==12.2.0
 argparse==1.4.0
 vat-pytorch==0.0.4
+protobuf==3.19.*
