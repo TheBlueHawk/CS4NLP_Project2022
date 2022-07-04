@@ -1,0 +1,27 @@
+program: vat_hp_tune.py
+method: random
+metric:
+  goal: minimize
+  name: valid_loss
+parameters:
+  vat:
+    value: "ALICEPP"
+  lr:
+    values: [5e-6, 1e-5, 2e-5]
+  batch-size:
+    value: 16
+  vat-loss-weight:
+    values: [0.1, 0.2, 0.5, 1, 2]
+  vat-loss-radius: 
+    values: [0.05, 0.1, 0.3, 0.5]
+  step-size:
+    values: [1e-4, 5e-4, 1e-3]
+  epsilon:
+    values: [1e-7, 5e-7, 1e-6, 5e-6]
+  noise-var:
+    values: [1e-5, 2e-5, 5e-5, 1e-4, 2e-4, 5e-4]
+early_terminate:
+  type: hyperband
+  s: 2
+  eta: 3
+  max_iter: 20
