@@ -44,6 +44,7 @@ def train():
     parser.add_argument("--step-size", type=float, default=1e-3)
     parser.add_argument("--epsilon", type=float, default=1e-6)
     parser.add_argument("--noise-var", type=float, default=1e-5)
+    parser.add_argument("--precision", type=int, default=32, choices=[16, 32])
     args = parser.parse_args()
 
     # Use wandb login directly in the terminal before running the script
@@ -51,6 +52,10 @@ def train():
     wandb.init(config=args)
     config = wandb.config
 
+    if config.precision == 16:
+        print(
+            "WARNING: half precision used. This takes up to 1.5x GPU's memory, it is thus recommanded to use this option only in combination with gradient accumulation."
+        )
     pl.seed_everything(config.seed)
 
     class MCTACODataset(Dataset):
@@ -342,6 +347,7 @@ def train():
         callbacks=[cb_progress_bar, cb_model_summary, accumulator],
         max_epochs=config.epochs,
         gpus=config.gpus,
+        precision=config.precision,
     )
     trainer.logger.log_hyperparams(config)
     trainer.fit(model=model, datamodule=datamodule)
