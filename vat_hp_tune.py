@@ -12,9 +12,11 @@ from typing import List, Union, Callable
 from torch import Tensor
 from itertools import count
 from vat_pytorch import ALICEPPLoss, ALICELoss, SMARTLoss, kl_loss, sym_kl_loss
+from pytorch_lightning.callbacks import GradientAccumulationScheduler
 
 DEFAULT_NAME = "unamed_mctaco_tune_run"
 DEFAULT_GROUP = "NO_GROUP"
+
 
 def train():
     parser = argparse.ArgumentParser()
@@ -23,7 +25,14 @@ def train():
     parser.add_argument("--gpus", type=int, default=1)
     parser.add_argument("--epochs", type=int, default=20)
     parser.add_argument("--lr", type=float, default=3e-5)
-    parser.add_argument("--batch-size", type=int, default=32)
+    parser.add_argument("--batch-size", type=int, default=16)
+    parser.add_argument("--acc-grad", type=int, default=1)
+    parser.add_argument(
+        "--acc-grad-schedule",
+        type=str,
+        default="none",
+        choices=["none", "increasing", "decreasing"],
+    )
     parser.add_argument("--vat-loss-weight", type=float, default=1.0)
     parser.add_argument("--vat-loss-radius", type=float, default=1.0)
     parser.add_argument("--pretrained-model", type=str, default="roberta-base")
@@ -43,7 +52,6 @@ def train():
     config = wandb.config
 
     pl.seed_everything(config.seed)
-
 
     class MCTACODataset(Dataset):
         def __init__(self, split: str, tokenizer, sequence_length: int):
@@ -84,8 +92,11 @@ def train():
             while len(input_ids) < self.sequence_length:
                 input_ids.append(0)
                 input_mask.append(0)
-            return torch.tensor(input_ids), torch.tensor(input_mask), torch.tensor(label)
-
+            return (
+                torch.tensor(input_ids),
+                torch.tensor(input_mask),
+                torch.tensor(label),
+            )
 
     class MCTACODatamodule(pl.LightningDataModule):
         def __init__(
@@ -106,7 +117,9 @@ def train():
                 sequence_length=self.sequence_length,
             )
             self.dataset_valid = MCTACODataset(
-                split="test", tokenizer=self.tokenizer, sequence_length=self.sequence_length
+                split="test",
+                tokenizer=self.tokenizer,
+                sequence_length=self.sequence_length,
             )
 
         def train_dataloader(self) -> DataLoader:
@@ -122,7 +135,6 @@ def train():
                 batch_size=self.batch_size,
                 shuffle=False,
             )
-
 
     class ExtractedRoBERTa(nn.Module):
         def __init__(self):
@@ -158,7 +170,6 @@ def train():
                 device=attention_mask.device,
             )  # (b, 1, 1, s)
 
-
     class SMARTClassificationModel(nn.Module):
         # b: batch_size, s: sequence_length, d: hidden_size , n: num_labels
 
@@ -190,7 +201,6 @@ def train():
             loss = ce_loss + self.weight * vat_loss
             return logits, loss
 
-
     class ALICEClassificationModel(nn.Module):
         # b: batch_size, s: sequence_length, d: hidden_size , n: num_labels
 
@@ -218,7 +228,6 @@ def train():
             # Compute VAT loss
             loss = self.vat_loss(embeddings, logits, labels)
             return logits, loss
-
 
     class ALICEPPClassificationModel(nn.Module):
         # b: batch_size, s: sequence_length, d: hidden_size , n: num_labels
@@ -248,7 +257,6 @@ def train():
             # Compute VAT loss
             loss = self.vat_loss(hidden_states, logits, labels)
             return logits, loss
-
 
     class TextClassificationModel(pl.LightningModule):
         def __init__(self, model: nn.Module, lr: float = 3e-5):
@@ -291,7 +299,6 @@ def train():
             self.log_dict(metrics, on_step=True, on_epoch=True)
             return loss
 
-
     tokenizer = AutoTokenizer.from_pretrained(config.pretrained_model)
     datamodule = MCTACODatamodule(
         tokenizer, batch_size=config.batch_size, sequence_length=config.sequence_length
@@ -301,14 +308,15 @@ def train():
     extracted_model = ExtractedRoBERTa()
     if config.vat == "SMART":
         vat_architecture = SMARTClassificationModel(
-            extracted_model, weight=config.vat_loss_weight, radius=config.vat_loss_radius
+            extracted_model,
+            weight=config.vat_loss_weight,
+            radius=config.vat_loss_radius,
         )
     elif config.vat == "ALICE":
         vat_architecture = ALICEClassificationModel(extracted_model)
     else:
         vat_architecture = ALICEPPClassificationModel(extracted_model)
     model = TextClassificationModel(vat_architecture, lr=config.lr)
-
 
     # Wandb Logger
     logger = pl.loggers.wandb.WandbLogger(
@@ -320,16 +328,25 @@ def train():
     # Callbacks
     cb_progress_bar = pl.callbacks.RichProgressBar()
     cb_model_summary = pl.callbacks.RichModelSummary()
+    if config.acc_grad_schedule == "none":
+        accumulator = GradientAccumulationScheduler(scheduling={0: config.acc_grad})
+    elif config.acc_grad_schedule == "decreasing":
+        accumulator = GradientAccumulationScheduler(
+            scheduling={0: config.acc_grad, 8: 1}
+        )
+    else:
+        accumulator = GradientAccumulationScheduler(scheduling={8: config.acc_grad})
     # Train
     trainer = pl.Trainer(
         logger=logger,
-        callbacks=[cb_progress_bar, cb_model_summary],
+        callbacks=[cb_progress_bar, cb_model_summary, accumulator],
         max_epochs=config.epochs,
         gpus=config.gpus,
     )
     trainer.logger.log_hyperparams(config)
     trainer.fit(model=model, datamodule=datamodule)
     wandb.finish()
+
 
 if __name__ == "__main__":
     train()
