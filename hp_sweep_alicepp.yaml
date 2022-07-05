@@ -2,7 +2,7 @@ program: vat_hp_tune.py
 method: random
 metric:
   goal: minimize
-  name: valid_loss
+  name: val_Accuracy_epoch
 parameters:
   vat:
     value: "ALICEPP"
