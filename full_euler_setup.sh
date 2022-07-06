@@ -1,4 +1,4 @@
-# Usage: sh euler_setup.sh <username> <sweepID>
+# Usage: sh full_euler_setup.sh <username> <sweepID>
 
 cd ..
 
