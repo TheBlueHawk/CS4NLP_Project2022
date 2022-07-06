@@ -6,6 +6,8 @@ cd ..
 
 cd scratch/$1
 
+git clone https://github.com/TheBlueHawk/CS4NLP_Project2022.git
+
 env2lmod
 
 module load gcc/8.2.0

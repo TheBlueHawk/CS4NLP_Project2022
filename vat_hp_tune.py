@@ -325,7 +325,7 @@ def train():
 
     # Wandb Logger
     logger = pl.loggers.wandb.WandbLogger(
-        project="cs4nlp-vat-hp",
+        project="CS4NLP_Project2022",
         entity="nextmachina",
         name=config.name,
         group=config.group,
