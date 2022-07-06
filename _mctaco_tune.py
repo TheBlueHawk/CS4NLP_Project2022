@@ -183,7 +183,11 @@ class TextClassificationModel(pl.LightningModule):
         self.train_metrics = metrics.clone(prefix='train/')
         self.valid_metrics = metrics.clone(prefix='val/')
 
+<<<<<<< HEAD:_mctaco_tune.py
     def configure_optimizers(self, selective_decay=True):
+=======
+    def configure_optimizers(self, selective_decay=False):
+>>>>>>> 2ac584b4e2d55a48c2b0bf0f5f901da266774b95:scripts/mctaco_tune.py
         if selective_decay:
             no_decay = ['bias', 'LayerNorm.weight']
             optimizer_grouped_parameters = [
