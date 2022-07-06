@@ -1,108 +1,21 @@
 import argparse
-import functools
 import inspect
 import itertools
 import pathlib
 from typing import List, Union, Callable
 
-from datasets import load_dataset
 import pytorch_lightning as pl
 from torchmetrics import MetricCollection, Accuracy, F1Score
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch as th
-from torch.utils.data import Dataset, DataLoader
 from transformers import AutoTokenizer, AutoModelForSequenceClassification
 import wandb
 
+import utils
+
 SEED_DEFAULT = None
-
-
-class MCTACODataset(Dataset):
-    def __init__(self, split: str, tokenizer, sequence_length: int):
-        self.dataset = load_dataset("mc_taco")[split]
-        self.tokenizer = tokenizer
-        self.sequence_length = sequence_length
-
-    def __len__(self):
-        return len(self.dataset)
-
-    def truncate_pair(self, tokens_a, tokens_b, max_length):
-        while True:
-            total_length = len(tokens_a) + len(tokens_b)
-            if total_length <= max_length:
-                break
-            if len(tokens_a) > len(tokens_b):
-                tokens_a.pop()
-            else:
-                tokens_b.pop()
-
-    # TODO(shwang): Would make more sense to tokenize the entire thing first and
-    #   just return little slices.
-    @functools.lru_cache(maxsize=None)
-    def __getitem__(self, idx): 
-        item = self.dataset[idx] 
-        tokenize = self.tokenizer.tokenize
-        sequence = tokenize(item['sentence'] + " " + item['question'])
-        answer = tokenize(item['answer']) 
-        label = item['label']
-        # Truncate excess tokens 
-        if answer: 
-            self.truncate_pair(sequence, answer, self.sequence_length - 3)
-        else: 
-            if len(sequence) > self.sequence_length - 2:
-                sequence = sequence[0:(self.sequence_length - 2)]
-        # Compute tokens, ids, mask 
-        tokens = ['<s>'] + sequence + ['</s></s>'] + answer + ['</s>']
-        input_ids = self.tokenizer.convert_tokens_to_ids(tokens)
-        input_mask = [1] * len(input_ids)
-        # Pad with 0 
-        while len(input_ids) < self.sequence_length:
-            input_ids.append(0)
-            input_mask.append(0)
-        return torch.tensor(input_ids), torch.tensor(input_mask), torch.tensor(label)
-
-
-class MCTACODatamodule(pl.LightningDataModule):
-    def __init__(
-        self,
-        tokenizer,
-        batch_size: int,
-        sequence_length: int 
-    ):
-        super().__init__()
-        self.tokenizer = tokenizer
-        self.batch_size = batch_size
-        self.sequence_length = sequence_length
-        self.dataset_train = None
-        self.dataset_valid = None
-
-    def setup(self, stage = None):
-        self.dataset_train = MCTACODataset(
-            split='validation', 
-            tokenizer=self.tokenizer, 
-            sequence_length=self.sequence_length
-        )
-        self.dataset_valid = MCTACODataset(
-            split='test', 
-            tokenizer=self.tokenizer, 
-            sequence_length=self.sequence_length
-        )
-
-    def train_dataloader(self) -> DataLoader:
-        return DataLoader(
-            dataset=self.dataset_train,
-            batch_size=self.batch_size,
-            shuffle=True,
-        )
-
-    def val_dataloader(self) -> DataLoader:
-        return DataLoader(
-            dataset=self.dataset_valid,
-            batch_size=self.batch_size,
-            shuffle=False,
-        )
 
 
 def inf_norm(x):
@@ -270,7 +183,11 @@ class TextClassificationModel(pl.LightningModule):
         self.train_metrics = metrics.clone(prefix='train/')
         self.valid_metrics = metrics.clone(prefix='val/')
 
+<<<<<<< HEAD:_mctaco_tune.py
+    def configure_optimizers(self, selective_decay=True):
+=======
     def configure_optimizers(self, selective_decay=False):
+>>>>>>> 2ac584b4e2d55a48c2b0bf0f5f901da266774b95:scripts/mctaco_tune.py
         if selective_decay:
             no_decay = ['bias', 'LayerNorm.weight']
             optimizer_grouped_parameters = [
@@ -367,7 +284,7 @@ def main():
         tokenizer.model_max_length = 512
     architecture = AutoModelForSequenceClassification.from_pretrained(args.pretrained_model)
 
-    datamodule = MCTACODatamodule(tokenizer, batch_size=args.batch_size, sequence_length=args.sequence_length)
+    datamodule = utils.MCTACODatamodule(tokenizer, batch_size=args.batch_size, sequence_length=args.sequence_length)
     datamodule.setup()
 
     smart_architecture = SMARTClassificationModel(
