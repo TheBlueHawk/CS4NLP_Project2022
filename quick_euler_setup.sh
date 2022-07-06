@@ -4,7 +4,7 @@ cd ..
 
 cd ..
 
-cd scratch/$1
+cd scratch/$1/CS4NLP_Project2022
 
 env2lmod
 
