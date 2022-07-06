@@ -5,18 +5,24 @@ metric:
   name: val_Accuracy_epoch
 parameters:
   lr:
-    values: [5e-6, 1e-5]
-  vat-loss-weight:
-    values: [0.5, 1]
-  vat-loss-radius: 
-    values: [0.05, 0.1, 0.3]
-  step-size:
-    values: [1e-4, 2e-4]
-  epsilon:
-    values: [1e-6, 2e-6, 5e-6]
-  noise-var:
     values: [5e-6, 1e-5, 2e-5]
-early_terminate:
+  acc-grad:
+    values: [2,4,8]
+  acc-grad-schedule:
+    values: ["none", "increasing", "decreasing"]
+  precision:
+    value: 16
+  vat-loss-weight:
+    value: 0.5
+  vat-loss-radius: 
+    value: 0.05
+  step-size:
+    value: 1e-4
+  epsilon:
+    value: 2e-6
+  noise-var:
+    value: 5e-6
+early_terminate: 
   type: hyperband
   s: 2
   eta: 3
