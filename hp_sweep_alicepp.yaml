@@ -6,12 +6,10 @@ metric:
 parameters:
   vat:
     value: "ALICEPP"
+  precision:
+    value: 16
   lr:
     values: [5e-6, 1e-5, 2e-5, 5e-5]
-  acc-grad:
-    values: [1,2,4,8]
-  acc-grad-schedule:
-    values: ["none", "increasing", "decreasing"]
   vat-loss-weight:
     values: [0.1, 0.2, 0.5, 1, 2]
   vat-loss-radius: 

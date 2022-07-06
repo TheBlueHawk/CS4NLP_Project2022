@@ -333,6 +333,7 @@ def train():
     # Callbacks
     cb_progress_bar = pl.callbacks.RichProgressBar()
     cb_model_summary = pl.callbacks.RichModelSummary()
+
     if config.acc_grad_schedule == "none":
         accumulator = GradientAccumulationScheduler(scheduling={0: config.acc_grad})
     elif config.acc_grad_schedule == "decreasing":
@@ -340,7 +341,9 @@ def train():
             scheduling={0: config.acc_grad, 8: 1}
         )
     else:
-        accumulator = GradientAccumulationScheduler(scheduling={8: config.acc_grad})
+        accumulator = GradientAccumulationScheduler(
+            scheduling={0: 1, 8: config.acc_grad}
+        )
     # Train
     trainer = pl.Trainer(
         logger=logger,
