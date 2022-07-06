@@ -1,3 +1,5 @@
+import os
+import platform
 import wandb
 import torch
 import torch.nn as nn
@@ -16,6 +18,11 @@ from pytorch_lightning.callbacks import GradientAccumulationScheduler
 
 DEFAULT_NAME = "unamed_mctaco_tune_run"
 DEFAULT_GROUP = "NO_GROUP"
+
+if platform.system() == "Linux":
+    DEFAULT_CPU_WORKERS = os.cpu_count()
+else:
+    DEFAULT_CPU_WORKERS = 0
 
 
 def train():
@@ -105,7 +112,7 @@ def train():
 
     class MCTACODatamodule(pl.LightningDataModule):
         def __init__(
-            self, tokenizer, batch_size: int, sequence_length: int, num_workers: int = 8
+            self, tokenizer, batch_size: int, sequence_length: int, num_workers: int = DEFAULT_CPU_WORKERS
         ):
             super().__init__()
             self.tokenizer = tokenizer
@@ -132,6 +139,7 @@ def train():
                 dataset=self.dataset_train,
                 batch_size=self.batch_size,
                 shuffle=True,
+                num_workers=self.num_workers
             )
 
         def val_dataloader(self) -> DataLoader:
@@ -139,6 +147,7 @@ def train():
                 dataset=self.dataset_valid,
                 batch_size=self.batch_size,
                 shuffle=False,
+                num_workers=self.num_workers
             )
 
     class ExtractedRoBERTa(nn.Module):
@@ -349,7 +358,7 @@ def train():
         logger=logger,
         callbacks=[cb_progress_bar, cb_model_summary, accumulator],
         max_epochs=config.epochs,
-        gpus=config.gpus,
+        gpus=0,
         precision=config.precision,
     )
     trainer.logger.log_hyperparams(config)
