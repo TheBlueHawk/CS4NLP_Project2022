@@ -18,7 +18,6 @@ from pytorch_lightning.callbacks import GradientAccumulationScheduler
 
 DEFAULT_NAME = "unamed_mctaco_tune_run"
 DEFAULT_GROUP = "NO_GROUP"
-DEFAULT_NUM_WORKERS = 0
 
 def train():
     parser = argparse.ArgumentParser()
@@ -47,7 +46,6 @@ def train():
     parser.add_argument("--epsilon", type=float, default=1e-6)
     parser.add_argument("--noise-var", type=float, default=1e-5)
     parser.add_argument("--precision", type=int, default=32, choices=[16, 32])
-    parser.add_argument("--num-workers", type=int, default=0)
     args = parser.parse_args()
 
     # Use wandb login directly in the terminal before running the script
@@ -108,7 +106,7 @@ def train():
 
     class MCTACODatamodule(pl.LightningDataModule):
         def __init__(
-            self, tokenizer, batch_size: int, sequence_length: int, num_workers: int = config.num_workers
+            self, tokenizer, batch_size: int, sequence_length: int
         ):
             super().__init__()
             self.tokenizer = tokenizer
@@ -116,14 +114,6 @@ def train():
             self.sequence_length = sequence_length
             self.dataset_train = None
             self.dataset_valid = None
-            # Multithreading for dataloader seems to be supported only on Linux
-            if config.num_workers > 0 and platform.system() == "Linux":
-                self.num_workers = num_workers
-            elif config.num_workers > 0 and platform.system() != "Linux":
-                print("WARNING: Multithreading for dataloader is supported only on Linux, reverting to single thread.")
-                self.num_workers = DEFAULT_NUM_WORKERS
-            else:
-                self.num_workers = DEFAULT_NUM_WORKERS
 
         def setup(self, stage=None):
             self.dataset_train = MCTACODataset(
@@ -142,7 +132,6 @@ def train():
                 dataset=self.dataset_train,
                 batch_size=self.batch_size,
                 shuffle=True,
-                num_workers=self.num_workers
             )
 
         def val_dataloader(self) -> DataLoader:
@@ -150,7 +139,6 @@ def train():
                 dataset=self.dataset_valid,
                 batch_size=self.batch_size,
                 shuffle=False,
-                num_workers=self.num_workers
             )
 
     class ExtractedRoBERTa(nn.Module):
