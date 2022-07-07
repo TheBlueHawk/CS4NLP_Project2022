@@ -9,7 +9,7 @@ parameters:
   precision:
     value: 16
   lr:
-    values: 5e-6
+    value: 5e-6
   vat-loss-weight:
     values: [0.1, 0.2, 0.5, 1]
   vat-loss-radius: 
