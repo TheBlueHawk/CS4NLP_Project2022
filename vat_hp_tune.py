@@ -349,7 +349,7 @@ def train():
         logger=logger,
         callbacks=[cb_progress_bar, cb_model_summary, accumulator],
         max_epochs=config.epochs,
-        gpus=0,
+        gpus=config.gpus,
         precision=config.precision,
     )
     trainer.logger.log_hyperparams(config)
