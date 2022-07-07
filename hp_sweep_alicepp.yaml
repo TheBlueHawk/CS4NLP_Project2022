@@ -1,7 +1,7 @@
 program: vat_hp_tune.py
 method: bayes
 metric:
-  goal: maximise
+  goal: maximize
   name: val_Accuracy_epoch
 parameters:
   vat:
