@@ -338,11 +338,11 @@ def train():
         accumulator = GradientAccumulationScheduler(scheduling={0: config.acc_grad})
     elif config.acc_grad_schedule == "decreasing":
         accumulator = GradientAccumulationScheduler(
-            scheduling={0: config.acc_grad, 8: config.acc_grad/2,  12: 1}
+            scheduling={0: config.acc_grad, 8: 1}
         )
     else:
         accumulator = GradientAccumulationScheduler(
-            scheduling={0: 1, 8: config.acc_grad/2, 12: config.acc_grad}
+            scheduling={0: 1, 8: config.acc_grad}
         )
     # Train
     trainer = pl.Trainer(
