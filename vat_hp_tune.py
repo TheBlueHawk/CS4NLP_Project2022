@@ -1,6 +1,4 @@
-import os
 import platform
-from traitlets import default
 import wandb
 import torch
 import torch.nn as nn
@@ -11,9 +9,6 @@ from torchmetrics import MetricCollection, Accuracy, F1Score
 from transformers import AutoTokenizer, AutoModelForSequenceClassification
 from datasets import load_dataset
 from torch.utils.data import Dataset, DataLoader
-from typing import List, Union, Callable
-from torch import Tensor
-from itertools import count
 from vat_pytorch import ALICEPPLoss, ALICELoss, SMARTLoss, kl_loss, sym_kl_loss
 from pytorch_lightning.callbacks import GradientAccumulationScheduler
 
