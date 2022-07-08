@@ -24,8 +24,3 @@ parameters:
     value: 2e-6
   noise-var:
     value: 5e-6
-early_terminate: 
-  type: hyperband
-  s: 2
-  eta: 3
-  max_iter: 30
