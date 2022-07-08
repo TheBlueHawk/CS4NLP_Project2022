@@ -19,7 +19,7 @@ parameters:
   epsilon:
     values: [5e-7, 1e-6, 5e-6, 1e-5]
   noise-var:
-    values: [1e-5, 2e-5, 5e-5, 1e-4]
+    values: [5e-5, 1e-4]
 early_terminate:
   type: hyperband
   s: 2
