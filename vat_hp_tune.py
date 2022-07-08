@@ -127,13 +127,11 @@ def train():
                 split="validation",
                 tokenizer=self.tokenizer,
                 sequence_length=self.sequence_length,
-                num_workers=self.num_workers,
             )
             self.dataset_valid = MCTACODataset(
                 split="test",
                 tokenizer=self.tokenizer,
                 sequence_length=self.sequence_length,
-                num_workers=self.num_workers,
             )
 
         def train_dataloader(self) -> DataLoader:
@@ -141,6 +139,7 @@ def train():
                 dataset=self.dataset_train,
                 batch_size=self.batch_size,
                 shuffle=True,
+                num_workers=self.num_workers,
             )
 
         def val_dataloader(self) -> DataLoader:
@@ -148,6 +147,7 @@ def train():
                 dataset=self.dataset_valid,
                 batch_size=self.batch_size,
                 shuffle=False,
+                num_workers=self.num_workers,
             )
 
     class ExtractedRoBERTa(nn.Module):
