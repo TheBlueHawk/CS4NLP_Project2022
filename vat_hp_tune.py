@@ -121,6 +121,10 @@ def train():
                 self.num_workers = DEFAULT_CPU_WORKERS
             else:
                 self.num_workers = 0
+            if config.gpus >= 1:
+                self.pin_memory = True
+            else:
+                self.pin_memory = False
 
         def setup(self, stage=None):
             self.dataset_train = MCTACODataset(
@@ -140,6 +144,7 @@ def train():
                 batch_size=self.batch_size,
                 shuffle=True,
                 num_workers=self.num_workers,
+                pin_memory=self.pin_memory,
             )
 
         def val_dataloader(self) -> DataLoader:
@@ -148,6 +153,7 @@ def train():
                 batch_size=self.batch_size,
                 shuffle=False,
                 num_workers=self.num_workers,
+                pin_memory=self.pin_memory,
             )
 
     class ExtractedRoBERTa(nn.Module):
