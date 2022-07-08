@@ -28,4 +28,4 @@ early_terminate:
   type: hyperband
   s: 2
   eta: 3
-  max_iter: 20
+  max_iter: 30
