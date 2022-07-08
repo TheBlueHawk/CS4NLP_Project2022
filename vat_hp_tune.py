@@ -1,5 +1,6 @@
 import os
 import platform
+from traitlets import default
 import wandb
 import torch
 import torch.nn as nn
@@ -18,6 +19,12 @@ from pytorch_lightning.callbacks import GradientAccumulationScheduler
 
 DEFAULT_NAME = "unamed_mctaco_tune_run"
 DEFAULT_GROUP = "NO_GROUP"
+
+# Multithreading is not well supported outside of Linux
+if platform.system() == "Linux":
+    DEFAULT_CPU_WORKERS = 8
+else:
+    DEFAULT_CPU_WORKERS = 0
 
 
 def train():
@@ -48,6 +55,7 @@ def train():
     parser.add_argument("--noise-var", type=float, default=1e-5)
     parser.add_argument("--precision", type=int, default=32, choices=[16, 32])
     parser.add_argument("--enable-checkpointing", type=bool, default=False)
+    parser.add_argument("--multithreading", type=bool, default=True)
     args = parser.parse_args()
 
     # Use wandb login directly in the terminal before running the script
@@ -114,17 +122,23 @@ def train():
             self.sequence_length = sequence_length
             self.dataset_train = None
             self.dataset_valid = None
+            if config.multithreading:
+                self.num_workers = DEFAULT_CPU_WORKERS
+            else:
+                self.num_workers = 0
 
         def setup(self, stage=None):
             self.dataset_train = MCTACODataset(
                 split="validation",
                 tokenizer=self.tokenizer,
                 sequence_length=self.sequence_length,
+                num_workers=self.num_workers,
             )
             self.dataset_valid = MCTACODataset(
                 split="test",
                 tokenizer=self.tokenizer,
                 sequence_length=self.sequence_length,
+                num_workers=self.num_workers,
             )
 
         def train_dataloader(self) -> DataLoader:
