@@ -19,6 +19,7 @@ from pytorch_lightning.callbacks import GradientAccumulationScheduler
 DEFAULT_NAME = "unamed_mctaco_tune_run"
 DEFAULT_GROUP = "NO_GROUP"
 
+
 def train():
     parser = argparse.ArgumentParser()
     parser.add_argument("-n", "--name", default=DEFAULT_NAME)
@@ -46,6 +47,7 @@ def train():
     parser.add_argument("--epsilon", type=float, default=1e-6)
     parser.add_argument("--noise-var", type=float, default=1e-5)
     parser.add_argument("--precision", type=int, default=32, choices=[16, 32])
+    parser.add_argument("--enable-checkpointing", type=bool, default=False)
     args = parser.parse_args()
 
     # Use wandb login directly in the terminal before running the script
@@ -105,9 +107,7 @@ def train():
             )
 
     class MCTACODatamodule(pl.LightningDataModule):
-        def __init__(
-            self, tokenizer, batch_size: int, sequence_length: int
-        ):
+        def __init__(self, tokenizer, batch_size: int, sequence_length: int):
             super().__init__()
             self.tokenizer = tokenizer
             self.batch_size = batch_size
@@ -351,6 +351,7 @@ def train():
         max_epochs=config.epochs,
         gpus=config.gpus,
         precision=config.precision,
+        enable_checkpointing=config.enable_checkpointing,
     )
     trainer.logger.log_hyperparams(config)
     trainer.fit(model=model, datamodule=datamodule)
