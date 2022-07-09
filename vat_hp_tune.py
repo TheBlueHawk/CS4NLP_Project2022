@@ -21,6 +21,10 @@ if platform.system() == "Linux":
 else:
     DEFAULT_CPU_WORKERS = 0
 
+def default(value, default):
+    if value is not None:
+        return value
+    return default
 
 def train():
     parser = argparse.ArgumentParser()
@@ -51,6 +55,7 @@ def train():
     parser.add_argument("--precision", type=int, default=32, choices=[16, 32])
     parser.add_argument("--enable-checkpointing", type=bool, default=False)
     parser.add_argument("--multithreading", type=bool, default=True)
+    parser.add_argument("--max-layer", type=int, default=None)
     args = parser.parse_args()
 
     # Use wandb login directly in the terminal before running the script
@@ -261,6 +266,7 @@ def train():
                 step_size=config.step_size,
                 epsilon=config.epsilon,
                 noise_var=config.noise_var,
+                max_layer=default(config.max_layer, self.model.num_layers)
             )
 
         def forward(self, input_ids, attention_mask, labels):
