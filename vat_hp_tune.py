@@ -41,7 +41,7 @@ def train():
     parser.add_argument("--vat-loss-radius", type=float, default=1.0)
     parser.add_argument("--pretrained-model", type=str, default="roberta-base")
     parser.add_argument("--sequence-length", type=int, default=128)
-    parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--seed", type=int, default=None)
     parser.add_argument(
         "--vat", type=str, default="ALICE", choices=["SMART", "ALICE", "ALICEPP"]
     )
@@ -62,7 +62,8 @@ def train():
         print(
             "WARNING: half precision used. This takes up to 1.5x GPU's memory, it is thus recommanded to use this option only in combination with gradient accumulation."
         )
-    pl.seed_everything(config.seed)
+    if config.seed is not None:
+        pl.seed_everything(config.seed)
 
     class MCTACODataset(Dataset):
         def __init__(self, split: str, tokenizer, sequence_length: int):
