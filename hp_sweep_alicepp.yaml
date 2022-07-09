@@ -8,15 +8,19 @@ parameters:
     value: "ALICEPP"
   precision:
     value: 16
+  acc-grad:
+    values: [2,4,8]
+  acc-grad-schedule:
+    values: ["none", "decreasing", "increasing"]
   lr:
-    value: 5e-6
+    values: [5e-6, 1e-5, 2e-5]
   vat-loss-weight:
     value: 0.5
   vat-loss-radius: 
-    values: [1e-5, 0.05, 0.3]
+    values: 0.05
   step-size:
     value: 5e-4
   epsilon:
-    values: [5e-6, 1e-5, 2e-5, 5e-5]
+    value: 5e-5
   noise-var:
     value: 5e-5
