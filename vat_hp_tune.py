@@ -58,10 +58,6 @@ def train():
     wandb.init(config=args)
     config = wandb.config
 
-    if config.precision == 16:
-        print(
-            "WARNING: half precision used. This takes up to 1.5x GPU's memory, it is thus recommanded to use this option only in combination with gradient accumulation."
-        )
     if config.seed is not None:
         pl.seed_everything(config.seed)
 
