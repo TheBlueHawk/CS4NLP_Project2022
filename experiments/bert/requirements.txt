@@ -6,5 +6,5 @@ pytorch-lightning==1.5.10
 wandb==0.12.14
 rich==12.2.0
 argparse==1.4.0
-vat-pytorch==0.0.4
+vat-pytorch==0.0.6
 protobuf==3.19.*
