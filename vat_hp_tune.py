@@ -195,10 +195,10 @@ def train():
     class SMARTClassificationModel(nn.Module):
         # b: batch_size, s: sequence_length, d: hidden_size , n: num_labels
 
-        def __init__(self, extracted_model, weight=1.0):
+        def __init__(self, extracted_model):
             super().__init__()
             self.model = extracted_model
-            self.weight = weight
+            self.weight = config.vat_loss_weight
             self.vat_loss = SMARTLoss(
                 model=extracted_model,
                 loss_fn=kl_loss,
@@ -332,8 +332,6 @@ def train():
     if config.vat == "SMART":
         vat_architecture = SMARTClassificationModel(
             extracted_model,
-            weight=config.vat_loss_weight,
-            radius=config.vat_loss_radius,
         )
     elif config.vat == "ALICE":
         vat_architecture = ALICEClassificationModel(extracted_model)
