@@ -9,13 +9,13 @@ parameters:
   batch-size:
     value: 16
   lr:
-    values: [5e-6, 1e-5]
+    values: 5e-6
   precision:
     value: 16
   vat-loss-weight:
-    values: [0.02, 0.1, 0.5, 1]
+    value: 0.5
   vat-loss-radius: 
-    values: [0.05, 0.1, 0.5, 1]
+    value: 0.05
   step-size:
     value: 1e-3
   epsilon:
