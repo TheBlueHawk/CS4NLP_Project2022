@@ -1,3 +1,6 @@
+import dataclasses
+import csv
+import os
 import platform
 import wandb
 import torch
@@ -5,6 +8,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import pytorch_lightning as pl
 import argparse
+from typing import Type
 from torchmetrics import MetricCollection, Accuracy, F1Score
 from transformers import AutoTokenizer, AutoModelForSequenceClassification
 from datasets import load_dataset
@@ -26,10 +30,214 @@ def default(value, default):
         return value
     return default
 
+
+@dataclasses.dataclass
+class InputExample:
+    """A single training/test example for simple sequence classification."""
+    guid: str
+    text: str
+    label: int  # 0: Duration less than one day. 1: Duration more than one day.
+
+
+class InputFeatures:
+    def __init__(self, input_ids, input_mask, segment_ids, target_idx_a, target_idx_b, label):
+        self.input_ids = input_ids
+        self.input_mask = input_mask
+        self.segment_ids = segment_ids
+        self.target_idx_a = target_idx_a
+        self.target_idx_b = target_idx_b
+        self.label = label
+
+
+class TemporalVerbProcessor:
+    def get_train_examples(self, data_dir):
+        """See base class."""
+        f = open(os.path.join(data_dir, "train.formatted.txt"), "r")
+        lines = [x.strip() for x in f.readlines()]
+        examples = self._create_examples(lines, "train")
+        return examples
+
+    def get_dev_examples(self, data_dir):
+        f = open(os.path.join(data_dir, "test.formatted.txt"), "r")
+        lines = [x.strip() for x in f.readlines()]
+        return self._create_examples(lines, "dev")
+
+    @classmethod
+    def _read_tsv(cls, input_file, quotechar=None):
+        """Reads a tab separated value file."""
+        with open(input_file, "r") as f:
+            reader = csv.reader(f, delimiter="\t", quotechar=quotechar)
+            lines = []
+            for line in reader:
+                lines.append(line)
+            return lines
+
+    def _create_examples(self, lines, set_type):
+        """Creates examples for the training and dev sets."""
+        examples = []
+        for i in range(0, len(lines)):
+            guid = "%s-%s" % (set_type, i)
+
+            groups = lines[i].split("\t")
+            text = groups[0]
+            text_tokens = text.split()
+            target_idx_a = int(groups[1]) + 1
+            target_idx_b = int(groups[3]) + 2 + len(groups[0].split())
+            text_tokens.insert(target_idx_a, "[unused510]")
+            # text_tokens.insert(target_idx_b + 1, "[unused510]")
+            text = " ".join(text_tokens)
+
+            # Steven: cleaning some of the data to make it more palatable to
+            #   the huggingface tokenizers.
+            text = text.replace(" ##", "")  # into ##ler ##ant ==> intolerant
+            text = text.replace(" ,", ",")  # of the world , this  ==> of the world, this
+            text = text.replace(" .", ".")  # of the world . this  ==> of the world, this
+            text = text.replace(" ' ", "'")  # of the world . this  ==> of the world, this
+            text = text.replace(" '", "'")  # of the world . this  ==> of the world, this
+            # text = text.replace(" [SEP] [unused510]", "[SEP]")  # of the world , this  ==> of the world, this
+            label = groups[4]
+
+            examples.append(InputExample(guid=guid, text=text, label=int(label)))
+        return examples
+
+
+def load_time_ml_dataset(split: str):
+    data_dir = "dataset_timeml"
+    processor = TemporalVerbProcessor()
+    if split == "validation":
+        examples = processor.get_train_examples(data_dir)
+    elif split == "test":
+        examples = processor.get_dev_examples(data_dir)
+    else:
+        raise ValueError(split)
+    return examples
+
+
+class TimeMLDataset(Dataset):
+    def __init__(self, split: str, tokenizer, sequence_length: int):
+        # I'll try to load this as a simple list.
+        self.dataset = load_time_ml_dataset(split)
+        self.tokenizer = tokenizer
+        self.sequence_length = sequence_length
+
+    def __len__(self):
+        return len(self.dataset)
+
+    def __getitem__(self, idx):
+        item = self.dataset[idx]
+        output = self.tokenizer(item.text, padding="max_length",
+                                max_length=self.sequence_length,
+                                truncation=True)
+        input_ids = output['input_ids']
+        input_mask = output['attention_mask']
+        return (
+            torch.tensor(input_ids),
+            torch.tensor(input_mask),
+            torch.tensor(item.label),
+        )
+
+
+class MCTACODataset(Dataset):
+    def __init__(self, split: str, tokenizer, sequence_length: int):
+        self.dataset = load_dataset("mc_taco")[split]
+        self.tokenizer = tokenizer
+        self.sequence_length = sequence_length
+
+    def __len__(self):
+        return len(self.dataset)
+
+    def truncate_pair(self, tokens_a, tokens_b, max_length):
+        while True:
+            total_length = len(tokens_a) + len(tokens_b)
+            if total_length <= max_length:
+                break
+            if len(tokens_a) > len(tokens_b):
+                tokens_a.pop()
+            else:
+                tokens_b.pop()
+
+    def __getitem__(self, idx):
+        item = self.dataset[idx]
+        tokenize = self.tokenizer.tokenize
+        sequence = tokenize(item["sentence"] + " " + item["question"])
+        answer = tokenize(item["answer"])
+        label = item["label"]
+        # Truncate excess tokens
+        if answer:
+            self.truncate_pair(sequence, answer, self.sequence_length - 3)
+        else:
+            if len(sequence) > self.sequence_length - 2:
+                sequence = sequence[0 : (self.sequence_length - 2)]
+        # Compute tokens, ids, mask
+        tokens = ["<s>"] + sequence + ["</s></s>"] + answer + ["</s>"]
+        input_ids = self.tokenizer.convert_tokens_to_ids(tokens)
+        input_mask = [1] * len(input_ids)
+        # Pad with 0
+        while len(input_ids) < self.sequence_length:
+            input_ids.append(0)
+            input_mask.append(0)
+        return (
+            torch.tensor(input_ids),
+            torch.tensor(input_mask),
+            torch.tensor(label),
+        )
+
+
+class DataModule(pl.LightningDataModule):
+    def __init__(self, tokenizer, batch_size: int, sequence_length: int,
+                 multithreading: bool, gpus: int, ds_constructor: Type):
+        super().__init__()
+        self.ds_constructor = ds_constructor
+        self.tokenizer = tokenizer
+        self.batch_size = batch_size
+        self.sequence_length = sequence_length
+        self.dataset_train = None
+        self.dataset_valid = None
+        if multithreading:
+            self.num_workers = DEFAULT_CPU_WORKERS
+        else:
+            self.num_workers = 0
+        if gpus >= 1:
+            self.pin_memory = True
+        else:
+            self.pin_memory = False
+
+    def setup(self, stage=None):
+        self.dataset_train = self.ds_constructor(
+            split="validation",
+            tokenizer=self.tokenizer,
+            sequence_length=self.sequence_length,
+        )
+        self.dataset_valid = self.ds_constructor(
+            split="test",
+            tokenizer=self.tokenizer,
+            sequence_length=self.sequence_length,
+        )
+
+    def train_dataloader(self) -> DataLoader:
+        return DataLoader(
+            dataset=self.dataset_train,
+            batch_size=self.batch_size,
+            shuffle=True,
+            num_workers=self.num_workers,
+            pin_memory=self.pin_memory,
+        )
+
+    def val_dataloader(self) -> DataLoader:
+        return DataLoader(
+            dataset=self.dataset_valid,
+            batch_size=self.batch_size,
+            shuffle=False,
+            num_workers=self.num_workers,
+            pin_memory=self.pin_memory,
+        )
+
+
 def train():
     parser = argparse.ArgumentParser()
     parser.add_argument("-n", "--name", default=DEFAULT_NAME)
     parser.add_argument("-g", "--group", default=DEFAULT_GROUP)
+    parser.add_argument("--dataset", default="mctaco", choices=["mctaco", "timeml"])
     parser.add_argument("--gpus", type=int, default=1)
     parser.add_argument("--epochs", type=int, default=20)
     parser.add_argument("--lr", type=float, default=3e-5)
@@ -65,98 +273,6 @@ def train():
 
     if config.seed is not None:
         pl.seed_everything(config.seed)
-
-    class MCTACODataset(Dataset):
-        def __init__(self, split: str, tokenizer, sequence_length: int):
-            self.dataset = load_dataset("mc_taco")[split]
-            self.tokenizer = tokenizer
-            self.sequence_length = sequence_length
-
-        def __len__(self):
-            return len(self.dataset)
-
-        def truncate_pair(self, tokens_a, tokens_b, max_length):
-            while True:
-                total_length = len(tokens_a) + len(tokens_b)
-                if total_length <= max_length:
-                    break
-                if len(tokens_a) > len(tokens_b):
-                    tokens_a.pop()
-                else:
-                    tokens_b.pop()
-
-        def __getitem__(self, idx):
-            item = self.dataset[idx]
-            tokenize = self.tokenizer.tokenize
-            sequence = tokenize(item["sentence"] + " " + item["question"])
-            answer = tokenize(item["answer"])
-            label = item["label"]
-            # Truncate excess tokens
-            if answer:
-                self.truncate_pair(sequence, answer, self.sequence_length - 3)
-            else:
-                if len(sequence) > self.sequence_length - 2:
-                    sequence = sequence[0 : (self.sequence_length - 2)]
-            # Compute tokens, ids, mask
-            tokens = ["<s>"] + sequence + ["</s></s>"] + answer + ["</s>"]
-            input_ids = self.tokenizer.convert_tokens_to_ids(tokens)
-            input_mask = [1] * len(input_ids)
-            # Pad with 0
-            while len(input_ids) < self.sequence_length:
-                input_ids.append(0)
-                input_mask.append(0)
-            return (
-                torch.tensor(input_ids),
-                torch.tensor(input_mask),
-                torch.tensor(label),
-            )
-
-    class MCTACODatamodule(pl.LightningDataModule):
-        def __init__(self, tokenizer, batch_size: int, sequence_length: int):
-            super().__init__()
-            self.tokenizer = tokenizer
-            self.batch_size = batch_size
-            self.sequence_length = sequence_length
-            self.dataset_train = None
-            self.dataset_valid = None
-            if config.multithreading:
-                self.num_workers = DEFAULT_CPU_WORKERS
-            else:
-                self.num_workers = 0
-            if config.gpus >= 1:
-                self.pin_memory = True
-            else:
-                self.pin_memory = False
-
-        def setup(self, stage=None):
-            self.dataset_train = MCTACODataset(
-                split="validation",
-                tokenizer=self.tokenizer,
-                sequence_length=self.sequence_length,
-            )
-            self.dataset_valid = MCTACODataset(
-                split="test",
-                tokenizer=self.tokenizer,
-                sequence_length=self.sequence_length,
-            )
-
-        def train_dataloader(self) -> DataLoader:
-            return DataLoader(
-                dataset=self.dataset_train,
-                batch_size=self.batch_size,
-                shuffle=True,
-                num_workers=self.num_workers,
-                pin_memory=self.pin_memory,
-            )
-
-        def val_dataloader(self) -> DataLoader:
-            return DataLoader(
-                dataset=self.dataset_valid,
-                batch_size=self.batch_size,
-                shuffle=False,
-                num_workers=self.num_workers,
-                pin_memory=self.pin_memory,
-            )
 
     class ExtractedRoBERTa(nn.Module):
         def __init__(self):
@@ -323,8 +439,16 @@ def train():
             return loss
 
     tokenizer = AutoTokenizer.from_pretrained(config.pretrained_model)
-    datamodule = MCTACODatamodule(
-        tokenizer, batch_size=config.batch_size, sequence_length=config.sequence_length
+    if config.dataset == "mctaco":
+        ds_constructor = MCTACODataset
+    elif config.dataset == "timeml":
+        ds_constructor = TimeMLDataset
+    else:
+        raise ValueError(config.dataset)
+    datamodule = DataModule(
+        tokenizer, ds_constructor=ds_constructor,
+        batch_size=config.batch_size, sequence_length=config.sequence_length,
+        gpus=config.gpus, multithreading=config.multithreading,
     )
     datamodule.setup()
 
