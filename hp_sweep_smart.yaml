@@ -17,10 +17,10 @@ parameters:
   vat-loss-weight:
     value: 0.5
   vat-loss-radius: 
-    values: [0.05, 0.1, 0.5, 1]
+    value: 0.5
   step-size:
     value: 2e-3
   epsilon:
-    values: [5e-6, 1e-5]
+    value: 5e-6
   noise-var:
-    values: [5e-6, 1e-5, 2e-5]
+    value: 2e-5
