@@ -307,6 +307,24 @@ def train():
                 input_shape=attention_mask.shape,
                 device=attention_mask.device,
             )  # (b, 1, 1, s)
+    
+    class ClassificationModel(nn.Module):
+        # b: batch_size, s: sequence_length, d: hidden_size , n: num_labels
+
+        def __init__(self, extracted_model):
+            super().__init__()
+            self.model = extracted_model
+
+        def forward(self, input_ids, attention_mask, labels):
+            """input_ids: (b, s), attention_mask: (b, s), labels: (b,)"""
+            # Get input embeddings
+            embeddings = self.model.get_embeddings(input_ids)
+            # Set mask and compute logits
+            self.model.set_attention_mask(attention_mask)
+            logits = self.model(embeddings)
+            # Compute CE loss
+            loss = F.cross_entropy(logits.view(-1, 2), labels.view(-1))
+            return logits, loss
 
     class SMARTClassificationModel(nn.Module):
         # b: batch_size, s: sequence_length, d: hidden_size , n: num_labels
@@ -454,7 +472,7 @@ def train():
 
     extracted_model = ExtractedRoBERTa()
     if config.vat == "None":
-        architecture = extracted_model
+        architecture = ClassificationModel(extracted_model)
     elif config.vat == "SMART":
         architecture = SMARTClassificationModel(
             extracted_model,
