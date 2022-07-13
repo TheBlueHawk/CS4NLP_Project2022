@@ -6,21 +6,23 @@ metric:
 parameters:
   vat:
     value: "ALICEPP"
+  dataset:
+    value: timeml
+  batch-size:
+    value: 16
   precision:
     value: 16
-  acc-grad:
-    value: 4
-  max-layer:
-    values: [0,1,2,3,4,5,6,7,8,9,10,11]
+  seed:
+    values: [0,1,2,3,4]
   lr:
-    value: 1e-5
+    values: [5e-6, 1e-5]
   vat-loss-weight:
-    value: 0.5
+    values: [0.1, 0.3]
   vat-loss-radius: 
-    value: 0.05
+    values: [0.1, 0.5, 1]
   step-size:
-    value: 5e-4
+    values: [1e-3, 2e-3]
   epsilon:
-    value: 5e-5
+    value: 1e-5
   noise-var:
-    value: 5e-5
+    values: [1e-5, 2e-5]

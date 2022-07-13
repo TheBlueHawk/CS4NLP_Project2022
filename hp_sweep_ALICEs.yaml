@@ -5,24 +5,22 @@ metric:
   name: val_Accuracy_epoch
 parameters:
   vat:
-    value: "ALICE"
+    values: ["ALICE", "ALICEPP"]
   dataset:
     value: timeml
   batch-size:
     value: 16
+  lr:
+    values: [5e-6, 1e-5]
   precision:
     value: 16
-  seed:
-    values: [0,1,2,3,4]
-  lr:
-    value: 5e-6
   vat-loss-weight:
-    values: [0.1, 0.5] 
+    values: [0.1, 0.5, 1]
   vat-loss-radius: 
-    values: [0.05, 0.1, 0.3]
+    values: [0.05, 0.1, 0.5, 1]
   step-size:
-    value: 1e-3
+    values: [5e-4, 1e-3, 2e-3]
   epsilon:
-    values: [1e-6, 1e-5, 1e-4]
+    values: [1e-6, 5e-6, 1e-5, 5e-5]
   noise-var:
-    values: [2e-5, 5e-5]
+    values: [5e-6, 1e-5, 2e-5]

@@ -289,6 +289,24 @@ def train():
                 input_shape=attention_mask.shape,
                 device=attention_mask.device,
             )  # (b, 1, 1, s)
+    
+    class ClassificationModel(nn.Module):
+        # b: batch_size, s: sequence_length, d: hidden_size , n: num_labels
+
+        def __init__(self, extracted_model):
+            super().__init__()
+            self.model = extracted_model
+
+        def forward(self, input_ids, attention_mask, labels):
+            """input_ids: (b, s), attention_mask: (b, s), labels: (b,)"""
+            # Get input embeddings
+            embeddings = self.model.get_embeddings(input_ids)
+            # Set mask and compute logits
+            self.model.set_attention_mask(attention_mask)
+            logits = self.model(embeddings)
+            # Compute CE loss
+            loss = F.cross_entropy(logits.view(-1, 2), labels.view(-1))
+            return logits, loss
 
     class SMARTClassificationModel(nn.Module):
         # b: batch_size, s: sequence_length, d: hidden_size , n: num_labels
@@ -436,15 +454,20 @@ def train():
     datamodule.setup()
 
     extracted_model = ExtractedRoBERTa()
-    if config.vat == "SMART":
-        vat_architecture = SMARTClassificationModel(
+    if config.vat == "None":
+        architecture = ClassificationModel(extracted_model)
+    elif config.vat == "SMART":
+        architecture = SMARTClassificationModel(
             extracted_model,
         )
     elif config.vat == "ALICE":
-        vat_architecture = ALICEClassificationModel(extracted_model)
+        architecture = ALICEClassificationModel(extracted_model)
+    elif config.vat == "ALICEPP":
+        architecture = ALICEPPClassificationModel(extracted_model)
     else:
-        vat_architecture = ALICEPPClassificationModel(extracted_model)
-    model = TextClassificationModel(vat_architecture, lr=config.lr)
+        raise ValueError(config.vat)
+        
+    model = TextClassificationModel(architecture, lr=config.lr)
 
     # Wandb Logger
     logger = pl.loggers.wandb.WandbLogger(
@@ -491,7 +514,7 @@ def parse_args() -> argparse.Namespace:
                               "If test, then use full training set for training, and evaluate on test set."))
     parser.add_argument("--gpus", type=int, default=1)
     parser.add_argument("--epochs", type=int, default=20)
-    parser.add_argument("--lr", type=float, default=3e-5)
+    parser.add_argument("--lr", type=float, default=1e-5)
     parser.add_argument("--batch-size", type=int, default=16)
     parser.add_argument("--acc-grad", type=int, default=1)
     parser.add_argument(
