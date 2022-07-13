@@ -455,7 +455,7 @@ def train():
     extracted_model = ExtractedRoBERTa()
     if config.vat == "None":
         architecture = extracted_model
-    if config.vat == "SMART":
+    elif config.vat == "SMART":
         architecture = SMARTClassificationModel(
             extracted_model,
         )
