@@ -4,23 +4,25 @@ metric:
   goal: maximize
   name: val_Accuracy_epoch
 parameters:
-  seed:
-    values: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99]
-  lr:
-    value: 1e-5
-  acc-grad:
-    value: 8
-  acc-grad-schedule:
-    value: "decreasing"
+  vat:
+    value: "ALICE"
+  dataset:
+    value: timeml
+  batch-size:
+    value: 16
   precision:
     value: 16
-  vat-loss-weight:
-    value: 0.5
-  vat-loss-radius: 
-    value: 0.05
-  step-size:
-    value: 1e-4
-  epsilon:
-    value: 2e-6
-  noise-var:
+  seed:
+    values: [0,1,2,3,4]
+  lr:
     value: 5e-6
+  vat-loss-weight:
+    values: [0.1, 0.5] 
+  vat-loss-radius: 
+    values: [0.05, 0.1, 0.3]
+  step-size:
+    value: 1e-3
+  epsilon:
+    values: [1e-6, 1e-5, 1e-4]
+  noise-var:
+    values: [2e-5, 5e-5]
