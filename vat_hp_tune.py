@@ -479,7 +479,7 @@ def train():
         )
     elif config.vat == "ALICE":
         architecture = ALICEClassificationModel(extracted_model)
-    elif config.vat == "ALICE":
+    elif config.vat == "ALICEPP":
         architecture = ALICEPPClassificationModel(extracted_model)
     else:
         raise ValueError(config.vat)
