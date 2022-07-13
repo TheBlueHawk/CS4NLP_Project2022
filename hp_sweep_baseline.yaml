@@ -11,6 +11,6 @@ parameters:
   batch-size:
     value: 16
   lr:
-    values: [5e-6, 1e-5]
+    values: [5e-6, 1e-5, 2e-5]
   precision:
     value: 16
