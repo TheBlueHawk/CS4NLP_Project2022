@@ -1,17 +1,19 @@
-import dataclasses
+import argparse
 import csv
+import dataclasses
 import os
 import platform
+import sklearn.model_selection
+from typing import Optional, Type
+
+import datasets
 import wandb
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import pytorch_lightning as pl
-import argparse
-from typing import Type
 from torchmetrics import MetricCollection, Accuracy, F1Score
 from transformers import AutoTokenizer, AutoModelForSequenceClassification
-from datasets import load_dataset
 from torch.utils.data import Dataset, DataLoader
 from vat_pytorch import ALICEPPLoss, ALICELoss, SMARTLoss, kl_loss, sym_kl_loss
 from pytorch_lightning.callbacks import GradientAccumulationScheduler
@@ -37,16 +39,6 @@ class InputExample:
     guid: str
     text: str
     label: int  # 0: Duration less than one day. 1: Duration more than one day.
-
-
-class InputFeatures:
-    def __init__(self, input_ids, input_mask, segment_ids, target_idx_a, target_idx_b, label):
-        self.input_ids = input_ids
-        self.input_mask = input_mask
-        self.segment_ids = segment_ids
-        self.target_idx_a = target_idx_a
-        self.target_idx_b = target_idx_b
-        self.label = label
 
 
 class TemporalVerbProcessor:
@@ -104,7 +96,7 @@ class TemporalVerbProcessor:
 def load_time_ml_dataset(split: str):
     data_dir = "dataset_timeml"
     processor = TemporalVerbProcessor()
-    if split == "validation":
+    if split == "train":
         examples = processor.get_train_examples(data_dir)
     elif split == "test":
         examples = processor.get_dev_examples(data_dir)
@@ -139,7 +131,9 @@ class TimeMLDataset(Dataset):
 
 class MCTACODataset(Dataset):
     def __init__(self, split: str, tokenizer, sequence_length: int):
-        self.dataset = load_dataset("mc_taco")[split]
+        mapping = {"train": "validation", "test": "test"}
+        split_name = mapping[split]
+        self.dataset = datasets.load_dataset("mc_taco")[split_name]
         self.tokenizer = tokenizer
         self.sequence_length = sequence_length
 
@@ -157,7 +151,7 @@ class MCTACODataset(Dataset):
                 tokens_b.pop()
 
     def __getitem__(self, idx):
-        item = self.dataset[idx]
+        item = self.dataset[int(idx)]
         tokenize = self.tokenizer.tokenize
         sequence = tokenize(item["sentence"] + " " + item["question"])
         answer = tokenize(item["answer"])
@@ -185,7 +179,8 @@ class MCTACODataset(Dataset):
 
 class DataModule(pl.LightningDataModule):
     def __init__(self, tokenizer, batch_size: int, sequence_length: int,
-                 multithreading: bool, gpus: int, ds_constructor: Type):
+                 multithreading: bool, gpus: int, ds_constructor: Type,
+                 *, validation_mode: bool):
         super().__init__()
         self.ds_constructor = ds_constructor
         self.tokenizer = tokenizer
@@ -193,6 +188,11 @@ class DataModule(pl.LightningDataModule):
         self.sequence_length = sequence_length
         self.dataset_train = None
         self.dataset_valid = None
+        # If validation_mode is True, then use the training dataset only.
+        # Randomly reserve 10% of the training dataset as the validation set.
+        # If validation is True, then train with the full training dataset
+        # and use the test dataset for evaluation.
+        self.validation_mode = validation_mode
         if multithreading:
             self.num_workers = DEFAULT_CPU_WORKERS
         else:
@@ -203,16 +203,29 @@ class DataModule(pl.LightningDataModule):
             self.pin_memory = False
 
     def setup(self, stage=None):
-        self.dataset_train = self.ds_constructor(
-            split="validation",
+        dataset_train = self.ds_constructor(
+            split="train",
             tokenizer=self.tokenizer,
             sequence_length=self.sequence_length,
         )
-        self.dataset_valid = self.ds_constructor(
-            split="test",
-            tokenizer=self.tokenizer,
-            sequence_length=self.sequence_length,
-        )
+        if self.validation_mode:
+            # Create a validation set split by splitting the training set.
+            # We reserve 10% of the data as the validation set.
+            VALIDATION_PROP = 0.1
+            os.environ["TOKENIZERS_PARALLELISM"] = "false" # Avoids repeated fork warning in combo with PytorchLightning
+            self.dataset_train, self.dataset_valid = sklearn.model_selection.train_test_split(
+                dataset_train, test_size=VALIDATION_PROP)
+            print(f"[SETUP]: loaded training set with {len(self.dataset_train)} examples")
+            print(f"[SETUP]: loaded validation set with {len(self.dataset_valid)} examples")
+        else:
+            self.dataset_train = dataset_train
+            self.dataset_valid = self.ds_constructor(
+                split="test",
+                tokenizer=self.tokenizer,
+                sequence_length=self.sequence_length,
+            )
+            print(f"[SETUP]: loaded training set with {len(self.dataset_train)} examples")
+            print(f"[SETUP]: loaded TEST set with {len(self.dataset_valid)} examples")
 
     def train_dataloader(self) -> DataLoader:
         return DataLoader(
@@ -234,40 +247,9 @@ class DataModule(pl.LightningDataModule):
 
 
 def train():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("-n", "--name", default=DEFAULT_NAME)
-    parser.add_argument("-g", "--group", default=DEFAULT_GROUP)
-    parser.add_argument("--dataset", default="mctaco", choices=["mctaco", "timeml"])
-    parser.add_argument("--gpus", type=int, default=1)
-    parser.add_argument("--epochs", type=int, default=20)
-    parser.add_argument("--lr", type=float, default=3e-5)
-    parser.add_argument("--batch-size", type=int, default=16)
-    parser.add_argument("--acc-grad", type=int, default=1)
-    parser.add_argument(
-        "--acc-grad-schedule",
-        type=str,
-        default="none",
-        choices=["none", "increasing", "decreasing"],
-    )
-    parser.add_argument("--vat-loss-weight", type=float, default=1.0)
-    parser.add_argument("--vat-loss-radius", type=float, default=1.0)
-    parser.add_argument("--pretrained-model", type=str, default="roberta-base")
-    parser.add_argument("--sequence-length", type=int, default=128)
-    parser.add_argument("--seed", type=int, default=None)
-    parser.add_argument(
-        "--vat", type=str, default="ALICE", choices=["SMART", "ALICE", "ALICEPP"]
-    )
-    parser.add_argument("--step-size", type=float, default=1e-3)
-    parser.add_argument("--epsilon", type=float, default=1e-6)
-    parser.add_argument("--noise-var", type=float, default=1e-5)
-    parser.add_argument("--precision", type=int, default=32, choices=[16, 32])
-    parser.add_argument("--enable-checkpointing", type=bool, default=False)
-    parser.add_argument("--multithreading", type=bool, default=True)
-    parser.add_argument("--max-layer", type=int, default=None)
-    args = parser.parse_args()
-
     # Use wandb login directly in the terminal before running the script
     # wandb.login()
+    args = parse_args()
     wandb.init(config=args)
     config = wandb.config
 
@@ -449,6 +431,7 @@ def train():
         tokenizer, ds_constructor=ds_constructor,
         batch_size=config.batch_size, sequence_length=config.sequence_length,
         gpus=config.gpus, multithreading=config.multithreading,
+        validation_mode=(args.train_mode=="valid"),
     )
     datamodule.setup()
 
@@ -496,6 +479,44 @@ def train():
     trainer.logger.log_hyperparams(config)
     trainer.fit(model=model, datamodule=datamodule)
     wandb.finish()
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("-n", "--name", default=DEFAULT_NAME)
+    parser.add_argument("-g", "--group", default=DEFAULT_GROUP)
+    parser.add_argument("--dataset", default="mctaco", choices=["mctaco", "timeml"])
+    parser.add_argument("--train-mode", default="valid", choices=["valid", "test"],
+                        help=("If valid, then reserve 10% of training set as validation set."
+                              "If test, then use full training set for training, and evaluate on test set."))
+    parser.add_argument("--gpus", type=int, default=1)
+    parser.add_argument("--epochs", type=int, default=20)
+    parser.add_argument("--lr", type=float, default=3e-5)
+    parser.add_argument("--batch-size", type=int, default=16)
+    parser.add_argument("--acc-grad", type=int, default=1)
+    parser.add_argument(
+        "--acc-grad-schedule",
+        type=str,
+        default="none",
+        choices=["none", "increasing", "decreasing"],
+    )
+    parser.add_argument("--vat-loss-weight", type=float, default=1.0)
+    parser.add_argument("--vat-loss-radius", type=float, default=1.0)
+    parser.add_argument("--pretrained-model", type=str, default="roberta-base")
+    parser.add_argument("--sequence-length", type=int, default=128)
+    parser.add_argument("--seed", type=int, default=None)
+    parser.add_argument(
+        "--vat", type=str, default="ALICE", choices=["SMART", "ALICE", "ALICEPP"]
+    )
+    parser.add_argument("--step-size", type=float, default=1e-3)
+    parser.add_argument("--epsilon", type=float, default=1e-6)
+    parser.add_argument("--noise-var", type=float, default=1e-5)
+    parser.add_argument("--precision", type=int, default=32, choices=[16, 32])
+    parser.add_argument("--enable-checkpointing", type=bool, default=False)
+    parser.add_argument("--multithreading", type=bool, default=True)
+    parser.add_argument("--max-layer", type=int, default=None)
+    args = parser.parse_args()
+    return args
 
 
 if __name__ == "__main__":
