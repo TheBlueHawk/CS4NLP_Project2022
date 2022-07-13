@@ -240,7 +240,7 @@ def train():
     parser.add_argument("--dataset", default="mctaco", choices=["mctaco", "timeml"])
     parser.add_argument("--gpus", type=int, default=1)
     parser.add_argument("--epochs", type=int, default=20)
-    parser.add_argument("--lr", type=float, default=3e-5)
+    parser.add_argument("--lr", type=float, default=1e-5)
     parser.add_argument("--batch-size", type=int, default=16)
     parser.add_argument("--acc-grad", type=int, default=1)
     parser.add_argument(
@@ -255,7 +255,7 @@ def train():
     parser.add_argument("--sequence-length", type=int, default=128)
     parser.add_argument("--seed", type=int, default=None)
     parser.add_argument(
-        "--vat", type=str, default="ALICE", choices=["SMART", "ALICE", "ALICEPP"]
+        "--vat", type=str, default="ALICE", choices=["None", "SMART", "ALICE", "ALICEPP"]
     )
     parser.add_argument("--step-size", type=float, default=1e-3)
     parser.add_argument("--epsilon", type=float, default=1e-6)
@@ -453,15 +453,20 @@ def train():
     datamodule.setup()
 
     extracted_model = ExtractedRoBERTa()
+    if config.vat == "None":
+        architecture = extracted_model
     if config.vat == "SMART":
-        vat_architecture = SMARTClassificationModel(
+        architecture = SMARTClassificationModel(
             extracted_model,
         )
     elif config.vat == "ALICE":
-        vat_architecture = ALICEClassificationModel(extracted_model)
+        architecture = ALICEClassificationModel(extracted_model)
+    elif config.vat == "ALICE":
+        architecture = ALICEPPClassificationModel(extracted_model)
     else:
-        vat_architecture = ALICEPPClassificationModel(extracted_model)
-    model = TextClassificationModel(vat_architecture, lr=config.lr)
+        raise ValueError(config.vat)
+        
+    model = TextClassificationModel(architecture, lr=config.lr)
 
     # Wandb Logger
     logger = pl.loggers.wandb.WandbLogger(
