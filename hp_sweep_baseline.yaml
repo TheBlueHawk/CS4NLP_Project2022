@@ -1,16 +1,16 @@
 program: vat_hp_tune.py
-method: random
+method: grid
 metric:
   goal: maximize
   name: val_Accuracy_epoch
 parameters:
   vat:
     value: "None"
-  dataset:
-    value: timeml
   batch-size:
     value: 16
   lr:
     values: [5e-6, 1e-5, 2e-5]
   precision:
     value: 16
+  seed:
+    values: [0,1,2,3,4]
