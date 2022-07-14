@@ -126,6 +126,7 @@ class TimeMLDataset(Dataset):
             torch.tensor(input_ids),
             torch.tensor(input_mask),
             torch.tensor(item.label),
+            {},
         )
 
 
@@ -174,6 +175,9 @@ class MCTACODataset(Dataset):
             torch.tensor(input_ids),
             torch.tensor(input_mask),
             torch.tensor(label),
+            dict(sentence=item["sentence"],
+                 question=item["answer"],
+                 answer=item["answer"])
         )
 
 
@@ -309,7 +313,7 @@ def train():
             return logits, loss
 
     class SMARTClassificationModel(nn.Module):
-        # b: batch_size, s: sequence_length, d: hidden_size , n: num_labels
+        # b: batch_size, s: sequence_length, d: hidden_size, n: num_labels
 
         def __init__(self, extracted_model):
             super().__init__()
@@ -402,7 +406,7 @@ def train():
             super().__init__()
             self.model = model
             self.lr = lr
-            metrics = MetricCollection([Accuracy(), F1Score()])
+            metrics = MetricCollection([Accuracy()])
             self.train_metrics = metrics.clone(prefix="train_")
             self.valid_metrics = metrics.clone(prefix="val_")
 
@@ -411,7 +415,7 @@ def train():
             return optimizer
 
         def training_step(self, batch, batch_idx):
-            input_ids, attention_masks, labels = batch
+            input_ids, attention_masks, labels, metadata = batch
             # Compute output
             outputs, loss = self.model(
                 input_ids=input_ids, attention_mask=attention_masks, labels=labels
@@ -422,10 +426,10 @@ def train():
             # Log loss and metrics
             self.log("train_loss", loss, on_step=True)
             self.log_dict(metrics, on_step=True, on_epoch=True)
-            return loss
+            return {"loss": loss}
 
         def validation_step(self, batch, batch_idx):
-            input_ids, attention_masks, labels = batch
+            input_ids, attention_masks, labels, metadata = batch
             # Compute output
             outputs, loss = self.model(
                 input_ids=input_ids, attention_mask=attention_masks, labels=labels
@@ -436,7 +440,77 @@ def train():
             # Log loss and metrics
             self.log("valid_loss", loss, on_step=True)
             self.log_dict(metrics, on_step=True, on_epoch=True)
-            return loss
+            return {
+                "loss": loss,
+                "labels_pred": labels_pred,
+                "labels": labels,
+                **metadata,
+            }
+
+    class MCTACOTextClassifierModel(TextClassificationModel):
+        def validation_epoch_end(self, validation_step_outputs):
+            # print(validation_step_outputs[0])
+            sentences = []
+            questions = []
+            predictions = []
+            labels = []
+            def _itemize(x):
+                return [e.item() for e in x]
+
+            for batch in validation_step_outputs:
+                sentences.extend(batch['sentence'])
+                questions.extend(batch['question'])
+                predictions.extend(_itemize(batch['labels_pred']))
+                labels.extend(_itemize(batch['labels']))
+                assert len(sentences) == len(questions)
+                assert len(labels) == len(predictions)
+                assert len(sentences) == len(labels)
+            keys = [(s, q) for s, q in zip(sentences, questions)]
+
+            # Intermediate calculations for F1 and EM scores
+            result_map = {}
+            prediction_count_map = {}
+            prediction_map = {}
+            gold_count_map = {}
+            for i, key in enumerate(keys):
+                if key not in result_map:
+                    result_map[key] = []
+                    prediction_count_map[key] = 0.0
+                    gold_count_map[key] = 0.0
+                    prediction_map[key] = []
+                prediction_map[key].append(predictions[i])
+                if predictions[i] == 1:
+                    prediction_count_map[key] += 1.0
+                if labels[i] == 1:
+                    gold_count_map[key] += 1.0
+                result_map[key].append(predictions[i] == labels[i])
+
+            total = 0.0
+            correct = 0.0
+            f1 = 0.0
+            for key in result_map.keys():
+                val = True
+                total += 1.0
+                cur_correct = 0.0
+                for i, v in enumerate(result_map[key]):
+                    val = val and v
+                    if v and prediction_map[key][i] == "yes":
+                        cur_correct += 1.0
+                if val:
+                    correct += 1.0
+                p = 1.0
+                if prediction_count_map[key] > 0.0:
+                    p = cur_correct / prediction_count_map[key]
+                r = 1.0
+                if gold_count_map[key] > 0.0:
+                    r = cur_correct / gold_count_map[key]
+                if p + r > 0.0:
+                    f1 += 2 * p * r / (p + r)
+
+            em_score = correct / total
+            f1_score = f1 / total
+            self.log("val_custom_EM_score", em_score, on_epoch=True)
+            self.log("val_custom_F1_score", f1_score, on_epoch=True)
 
     tokenizer = AutoTokenizer.from_pretrained(config.pretrained_model)
     if config.dataset == "mctaco":
@@ -451,7 +525,6 @@ def train():
         gpus=config.gpus, multithreading=config.multithreading,
         validation_mode=(args.train_mode=="valid"),
     )
-    datamodule.setup()
 
     extracted_model = ExtractedRoBERTa()
     if config.vat == "None":
@@ -466,8 +539,13 @@ def train():
         architecture = ALICEPPClassificationModel(extracted_model)
     else:
         raise ValueError(config.vat)
-        
-    model = TextClassificationModel(architecture, lr=config.lr)
+
+    if config.dataset == "timeml":
+        model = TextClassificationModel(architecture, lr=config.lr)
+    elif config.dataset == "mctaco":
+        model = MCTACOTextClassifierModel(architecture, lr=config.lr)
+    else:
+        raise ValueError(config.dataset)
 
     # Wandb Logger
     logger = pl.loggers.wandb.WandbLogger(

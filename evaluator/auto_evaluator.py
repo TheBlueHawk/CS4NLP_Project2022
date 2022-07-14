@@ -81,7 +81,6 @@ def main():
     parser.add_argument("--model_name",
                         required=True,
                         help="model name as listed on HuggingFace.")
-    
 
     args = parser.parse_args()
     print(args.model_name)
