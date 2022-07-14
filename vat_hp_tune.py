@@ -624,7 +624,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--sequence-length", type=int, default=128)
     parser.add_argument("--seed", type=int, default=None)
     parser.add_argument(
-        "--vat", type=str, default="ALICE", choices=["SMART", "ALICE", "ALICEPP"]
+        "--vat", type=str, default="ALICE", choices=["None", "SMART", "ALICE", "ALICEPP"]
     )
     parser.add_argument("--step-size", type=float, default=1e-3)
     parser.add_argument("--epsilon", type=float, default=1e-6)
