@@ -1,5 +1,5 @@
 program: vat_hp_tune.py
-method: random
+method: grid
 metric:
   goal: maximize
   name: val_Accuracy_epoch

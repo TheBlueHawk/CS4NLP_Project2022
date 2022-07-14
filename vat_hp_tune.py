@@ -15,7 +15,7 @@ import pytorch_lightning as pl
 from torchmetrics import MetricCollection, Accuracy, F1Score
 from transformers import AutoTokenizer, AutoModelForSequenceClassification
 from torch.utils.data import Dataset, DataLoader
-from vat_pytorch import ALICEPPLoss, ALICELoss, SMARTLoss, kl_loss, sym_kl_loss
+from vat_pytorch import ALICEPPLoss, ALICELoss, SMARTLoss, kl_loss, sym_kl_loss, js_loss
 from pytorch_lightning.callbacks import GradientAccumulationScheduler
 
 DEFAULT_NAME = "unamed_mctaco_tune_run"
@@ -379,7 +379,7 @@ def train():
             self.model = extracted_model
             self.vat_loss = ALICEPPLoss(
                 model=extracted_model,
-                loss_fn=kl_loss,
+                loss_fn=js_loss,
                 num_classes=2,
                 num_layers=self.model.num_layers,
                 alpha=config.vat_loss_weight,
