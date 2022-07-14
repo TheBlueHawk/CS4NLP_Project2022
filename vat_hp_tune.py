@@ -176,7 +176,7 @@ class MCTACODataset(Dataset):
             torch.tensor(input_mask),
             torch.tensor(label),
             dict(sentence=item["sentence"],
-                 question=item["answer"],
+                 question=item["question"],
                  answer=item["answer"])
         )
 
@@ -424,8 +424,9 @@ def train():
             # Compute metrics
             metrics = self.train_metrics(labels, labels_pred)
             # Log loss and metrics
-            self.log("train_loss", loss, on_step=True)
-            self.log_dict(metrics, on_step=True, on_epoch=True)
+            batch_size = len(labels)
+            self.log("train_loss", loss, on_step=True, batch_size=batch_size)
+            self.log_dict(metrics, on_step=True, on_epoch=True, batch_size=batch_size)
             return {"loss": loss}
 
         def validation_step(self, batch, batch_idx):
@@ -438,8 +439,9 @@ def train():
             # Compute metrics
             metrics = self.valid_metrics(labels, labels_pred)
             # Log loss and metrics
-            self.log("valid_loss", loss, on_step=True)
-            self.log_dict(metrics, on_step=True, on_epoch=True)
+            batch_size = len(labels)
+            self.log("valid_loss", loss, on_step=True, batch_size=batch_size)
+            self.log_dict(metrics, on_step=True, on_epoch=True, batch_size=batch_size)
             return {
                 "loss": loss,
                 "labels_pred": labels_pred,
@@ -466,49 +468,64 @@ def train():
                 assert len(labels) == len(predictions)
                 assert len(sentences) == len(labels)
             keys = [(s, q) for s, q in zip(sentences, questions)]
+            assert set(labels) == {0, 1}
 
             # Intermediate calculations for F1 and EM scores
-            result_map = {}
-            prediction_count_map = {}
-            prediction_map = {}
-            gold_count_map = {}
+            result_map = {}  # key => list[successful bool]  (EM if all(result_map[key]) is True)
+            prediction_count_map = {}  # key => (int) num positive predictions
+            gold_count_map = {}  # key => (int) num of positive ground truth labels
+
+            prediction_map = {}  # key => list(predictions (1 or 0))
+            label_map = {}  # key => list(labels (1 or 0))  1 is yes
             for i, key in enumerate(keys):
                 if key not in result_map:
                     result_map[key] = []
                     prediction_count_map[key] = 0.0
                     gold_count_map[key] = 0.0
                     prediction_map[key] = []
+                    label_map[key] = []
                 prediction_map[key].append(predictions[i])
+                label_map[key].append(labels[i])
                 if predictions[i] == 1:
                     prediction_count_map[key] += 1.0
                 if labels[i] == 1:
                     gold_count_map[key] += 1.0
                 result_map[key].append(predictions[i] == labels[i])
 
-            total = 0.0
-            correct = 0.0
+            total = 0.0  # total number of keys
+            exact_match_count = 0.0
             f1 = 0.0
             for key in result_map.keys():
-                val = True
+                em_so_far = True
                 total += 1.0
-                cur_correct = 0.0
-                for i, v in enumerate(result_map[key]):
-                    val = val and v
-                    if v and prediction_map[key][i] == "yes":
-                        cur_correct += 1.0
-                if val:
-                    correct += 1.0
+                true_positives = 0.0
+                for i, pred_is_correct in enumerate(result_map[key]):
+                    em_so_far = em_so_far and pred_is_correct
+                    # prediction_map[key][i] == 1 ==> The answer is "yes"
+                    # So cur_correct counts the number of true positives
+                    if pred_is_correct and prediction_map[key][i] == 1:
+                        assert label_map[key][i] == prediction_map[key][i]
+                        true_positives += 1.0
+                if em_so_far:
+                    exact_match_count += 1.0
                 p = 1.0
                 if prediction_count_map[key] > 0.0:
-                    p = cur_correct / prediction_count_map[key]
+                    p = true_positives / prediction_count_map[key]
                 r = 1.0
                 if gold_count_map[key] > 0.0:
-                    r = cur_correct / gold_count_map[key]
+                    r = true_positives / gold_count_map[key]
+                # print("len result_map key:", len(result_map[key]))
+                # print("p", p, "r", r, "tp", true_positives, "tp+fp", prediction_count_map[key],
+                #       "positive labels", gold_count_map[key])
                 if p + r > 0.0:
-                    f1 += 2 * p * r / (p + r)
+                    curr_f1 = 2 * p * r / (p + r)
+                    # print(curr_f1, "\n")
+                    f1 += curr_f1
 
-            em_score = correct / total
+            em_score = exact_match_count / total
             f1_score = f1 / total
+            # if abs(em_score - f1_score) < 1e-6:
+            #     breakpoint()
             self.log("val_custom_EM_score", em_score, on_epoch=True)
             self.log("val_custom_F1_score", f1_score, on_epoch=True)
 
