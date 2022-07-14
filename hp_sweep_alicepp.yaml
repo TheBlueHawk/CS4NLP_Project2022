@@ -19,7 +19,7 @@ parameters:
   lr:
     value: 1e-5
   vat-loss-weight:
-    values: 0.3
+    value: 0.3
   vat-loss-radius: 
     value: 1
   step-size:
