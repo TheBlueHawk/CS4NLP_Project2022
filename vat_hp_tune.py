@@ -263,7 +263,7 @@ def train():
     class ExtractedRoBERTa(nn.Module):
         def __init__(self):
             super().__init__()
-            model = AutoModelForSequenceClassification.from_pretrained("roberta-base")
+            model = AutoModelForSequenceClassification.from_pretrained(config.pretrained_model)
             self.roberta = model.roberta
             self.layers = model.roberta.encoder.layer
             self.classifier = model.classifier
