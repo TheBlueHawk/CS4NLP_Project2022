@@ -15,7 +15,7 @@ parameters:
   acc-grad:
     value: 4
   acc-grad-schedule:
-    values: "decreasing"
+    value: "decreasing"
   lr:
      value: 5e-6
   vat-loss-weight:
