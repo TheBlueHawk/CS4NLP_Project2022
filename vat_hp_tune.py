@@ -640,7 +640,7 @@ def train():
     # Train
     trainer = pl.Trainer(
         logger=logger,
-        callbacks=[cb_progress_bar, cb_model_summary, accumulator, swa],
+        callbacks=[cb_progress_bar, cb_model_summary, accumulator],
         max_epochs=config.epochs,
         gpus=config.gpus,
         precision=config.precision,
