@@ -263,7 +263,7 @@ def train():
     class ExtractedRoBERTa(nn.Module):
         def __init__(self):
             super().__init__()
-            model = AutoModelForSequenceClassification.from_pretrained(config.pretrained_model)
+            model = AutoModelForSequenceClassification.from_pretrained(config.pretrained_model, classifier_dropout=config.classifier_dropout)
             self.roberta = model.roberta
             self.layers = model.roberta.encoder.layer
             self.classifier = model.classifier
@@ -635,6 +635,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--multithreading", type=bool, default=True)
     parser.add_argument("--max-layer", type=int, default=None)
     parser.add_argument("--grad-clip-value", type=float, default=None)
+    parser.add_argument("--classifier-dropout", type=float, default=None)
     args = parser.parse_args()
     return args
 
