@@ -16,7 +16,10 @@ from torchmetrics import MetricCollection, Accuracy, F1Score
 from transformers import AutoTokenizer, AutoModelForSequenceClassification
 from torch.utils.data import Dataset, DataLoader
 from vat_pytorch import ALICEPPLoss, ALICELoss, SMARTLoss, kl_loss, sym_kl_loss, js_loss
-from pytorch_lightning.callbacks import GradientAccumulationScheduler
+from pytorch_lightning.callbacks import (
+    GradientAccumulationScheduler,
+    StochasticWeightAveraging,
+)
 
 DEFAULT_NAME = "unamed_mctaco_tune_run"
 DEFAULT_GROUP = "NO_GROUP"
@@ -27,6 +30,7 @@ if platform.system() == "Linux":
 else:
     DEFAULT_CPU_WORKERS = 0
 
+
 def default(value, default):
     if value is not None:
         return value
@@ -36,6 +40,7 @@ def default(value, default):
 @dataclasses.dataclass
 class InputExample:
     """A single training/test example for simple sequence classification."""
+
     guid: str
     text: str
     label: int  # 0: Duration less than one day. 1: Duration more than one day.
@@ -82,10 +87,18 @@ class TemporalVerbProcessor:
             # Steven: cleaning some of the data to make it more palatable to
             #   the huggingface tokenizers.
             text = text.replace(" ##", "")  # into ##ler ##ant ==> intolerant
-            text = text.replace(" ,", ",")  # of the world , this  ==> of the world, this
-            text = text.replace(" .", ".")  # of the world . this  ==> of the world, this
-            text = text.replace(" ' ", "'")  # of the world . this  ==> of the world, this
-            text = text.replace(" '", "'")  # of the world . this  ==> of the world, this
+            text = text.replace(
+                " ,", ","
+            )  # of the world , this  ==> of the world, this
+            text = text.replace(
+                " .", "."
+            )  # of the world . this  ==> of the world, this
+            text = text.replace(
+                " ' ", "'"
+            )  # of the world . this  ==> of the world, this
+            text = text.replace(
+                " '", "'"
+            )  # of the world . this  ==> of the world, this
             # text = text.replace(" [SEP] [unused510]", "[SEP]")  # of the world , this  ==> of the world, this
             label = groups[4]
 
@@ -117,11 +130,14 @@ class TimeMLDataset(Dataset):
 
     def __getitem__(self, idx):
         item = self.dataset[idx]
-        output = self.tokenizer(item.text, padding="max_length",
-                                max_length=self.sequence_length,
-                                truncation=True)
-        input_ids = output['input_ids']
-        input_mask = output['attention_mask']
+        output = self.tokenizer(
+            item.text,
+            padding="max_length",
+            max_length=self.sequence_length,
+            truncation=True,
+        )
+        input_ids = output["input_ids"]
+        input_mask = output["attention_mask"]
         return (
             torch.tensor(input_ids),
             torch.tensor(input_mask),
@@ -175,16 +191,26 @@ class MCTACODataset(Dataset):
             torch.tensor(input_ids),
             torch.tensor(input_mask),
             torch.tensor(label),
-            dict(sentence=item["sentence"],
-                 question=item["question"],
-                 answer=item["answer"])
+            dict(
+                sentence=item["sentence"],
+                question=item["question"],
+                answer=item["answer"],
+            ),
         )
 
 
 class DataModule(pl.LightningDataModule):
-    def __init__(self, tokenizer, batch_size: int, sequence_length: int,
-                 multithreading: bool, gpus: int, ds_constructor: Type,
-                 *, validation_mode: bool):
+    def __init__(
+        self,
+        tokenizer,
+        batch_size: int,
+        sequence_length: int,
+        multithreading: bool,
+        gpus: int,
+        ds_constructor: Type,
+        *,
+        validation_mode: bool,
+    ):
         super().__init__()
         self.ds_constructor = ds_constructor
         self.tokenizer = tokenizer
@@ -216,11 +242,21 @@ class DataModule(pl.LightningDataModule):
             # Create a validation set split by splitting the training set.
             # We reserve 10% of the data as the validation set.
             VALIDATION_PROP = 0.1
-            os.environ["TOKENIZERS_PARALLELISM"] = "false" # Avoids repeated fork warning in combo with PytorchLightning
-            self.dataset_train, self.dataset_valid = sklearn.model_selection.train_test_split(
-                dataset_train, test_size=VALIDATION_PROP)
-            print(f"[SETUP]: loaded training set with {len(self.dataset_train)} examples")
-            print(f"[SETUP]: loaded validation set with {len(self.dataset_valid)} examples")
+            os.environ[
+                "TOKENIZERS_PARALLELISM"
+            ] = "false"  # Avoids repeated fork warning in combo with PytorchLightning
+            (
+                self.dataset_train,
+                self.dataset_valid,
+            ) = sklearn.model_selection.train_test_split(
+                dataset_train, test_size=VALIDATION_PROP
+            )
+            print(
+                f"[SETUP]: loaded training set with {len(self.dataset_train)} examples"
+            )
+            print(
+                f"[SETUP]: loaded validation set with {len(self.dataset_valid)} examples"
+            )
         else:
             self.dataset_train = dataset_train
             self.dataset_valid = self.ds_constructor(
@@ -228,7 +264,9 @@ class DataModule(pl.LightningDataModule):
                 tokenizer=self.tokenizer,
                 sequence_length=self.sequence_length,
             )
-            print(f"[SETUP]: loaded training set with {len(self.dataset_train)} examples")
+            print(
+                f"[SETUP]: loaded training set with {len(self.dataset_train)} examples"
+            )
             print(f"[SETUP]: loaded TEST set with {len(self.dataset_valid)} examples")
 
     def train_dataloader(self) -> DataLoader:
@@ -263,7 +301,9 @@ def train():
     class ExtractedRoBERTa(nn.Module):
         def __init__(self):
             super().__init__()
-            model = AutoModelForSequenceClassification.from_pretrained(config.pretrained_model, classifier_dropout=config.classifier_dropout)
+            model = AutoModelForSequenceClassification.from_pretrained(
+                config.pretrained_model, classifier_dropout=config.classifier_dropout
+            )
             self.roberta = model.roberta
             self.layers = model.roberta.encoder.layer
             self.classifier = model.classifier
@@ -293,7 +333,7 @@ def train():
                 input_shape=attention_mask.shape,
                 device=attention_mask.device,
             )  # (b, 1, 1, s)
-    
+
     class ClassificationModel(nn.Module):
         # b: batch_size, s: sequence_length, d: hidden_size , n: num_labels
 
@@ -386,7 +426,7 @@ def train():
                 step_size=config.step_size,
                 epsilon=config.epsilon,
                 noise_var=config.noise_var,
-                max_layer=default(config.max_layer, self.model.num_layers)
+                max_layer=default(config.max_layer, self.model.num_layers),
             )
 
         def forward(self, input_ids, attention_mask, labels):
@@ -456,14 +496,15 @@ def train():
             questions = []
             predictions = []
             labels = []
+
             def _itemize(x):
                 return [e.item() for e in x]
 
             for batch in validation_step_outputs:
-                sentences.extend(batch['sentence'])
-                questions.extend(batch['question'])
-                predictions.extend(_itemize(batch['labels_pred']))
-                labels.extend(_itemize(batch['labels']))
+                sentences.extend(batch["sentence"])
+                questions.extend(batch["question"])
+                predictions.extend(_itemize(batch["labels_pred"]))
+                labels.extend(_itemize(batch["labels"]))
                 assert len(sentences) == len(questions)
                 assert len(labels) == len(predictions)
                 assert len(sentences) == len(labels)
@@ -471,7 +512,9 @@ def train():
             assert set(labels) == {0, 1}
 
             # Intermediate calculations for F1 and EM scores
-            result_map = {}  # key => list[successful bool]  (EM if all(result_map[key]) is True)
+            result_map = (
+                {}
+            )  # key => list[successful bool]  (EM if all(result_map[key]) is True)
             prediction_count_map = {}  # key => (int) num positive predictions
             gold_count_map = {}  # key => (int) num of positive ground truth labels
 
@@ -537,10 +580,13 @@ def train():
     else:
         raise ValueError(config.dataset)
     datamodule = DataModule(
-        tokenizer, ds_constructor=ds_constructor,
-        batch_size=config.batch_size, sequence_length=config.sequence_length,
-        gpus=config.gpus, multithreading=config.multithreading,
-        validation_mode=(args.train_mode=="valid"),
+        tokenizer,
+        ds_constructor=ds_constructor,
+        batch_size=config.batch_size,
+        sequence_length=config.sequence_length,
+        gpus=config.gpus,
+        multithreading=config.multithreading,
+        validation_mode=(args.train_mode == "valid"),
     )
 
     extracted_model = ExtractedRoBERTa()
@@ -585,15 +631,21 @@ def train():
         accumulator = GradientAccumulationScheduler(
             scheduling={0: 1, 8: config.acc_grad}
         )
+
+    if config.swa:
+        swa = StochasticWeightAveraging(swa_lrs=5e-6, annealing_strategy="linear")
+    else:
+        swa = None
+
     # Train
     trainer = pl.Trainer(
         logger=logger,
-        callbacks=[cb_progress_bar, cb_model_summary, accumulator],
+        callbacks=[cb_progress_bar, cb_model_summary, accumulator, swa],
         max_epochs=config.epochs,
         gpus=config.gpus,
         precision=config.precision,
         enable_checkpointing=config.enable_checkpointing,
-        gradient_clip_val=config.grad_clip_value
+        gradient_clip_val=config.grad_clip_value,
     )
     trainer.logger.log_hyperparams(config)
     trainer.fit(model=model, datamodule=datamodule)
@@ -605,9 +657,15 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("-n", "--name", default=DEFAULT_NAME)
     parser.add_argument("-g", "--group", default=DEFAULT_GROUP)
     parser.add_argument("--dataset", default="mctaco", choices=["mctaco", "timeml"])
-    parser.add_argument("--train-mode", default="valid", choices=["valid", "test"],
-                        help=("If valid, then reserve 10% of training set as validation set."
-                              "If test, then use full training set for training, and evaluate on test set."))
+    parser.add_argument(
+        "--train-mode",
+        default="valid",
+        choices=["valid", "test"],
+        help=(
+            "If valid, then reserve 10% of training set as validation set."
+            "If test, then use full training set for training, and evaluate on test set."
+        ),
+    )
     parser.add_argument("--gpus", type=int, default=1)
     parser.add_argument("--epochs", type=int, default=20)
     parser.add_argument("--lr", type=float, default=1e-5)
@@ -625,7 +683,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--sequence-length", type=int, default=128)
     parser.add_argument("--seed", type=int, default=None)
     parser.add_argument(
-        "--vat", type=str, default="ALICE", choices=["None", "SMART", "ALICE", "ALICEPP"]
+        "--vat",
+        type=str,
+        default="ALICE",
+        choices=["None", "SMART", "ALICE", "ALICEPP"],
     )
     parser.add_argument("--step-size", type=float, default=1e-3)
     parser.add_argument("--epsilon", type=float, default=1e-6)
@@ -636,10 +697,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--max-layer", type=int, default=None)
     parser.add_argument("--grad-clip-value", type=float, default=None)
     parser.add_argument("--classifier-dropout", type=float, default=None)
+    parser.add_argument("--swa", type=bool, default=False)
     args = parser.parse_args()
     return args
-
-    
 
 
 if __name__ == "__main__":
