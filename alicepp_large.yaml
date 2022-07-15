@@ -1,5 +1,5 @@
 program: vat_hp_tune.py
-method: bayes
+method: grid
 metric:
   goal: maximize
   name: val_custom_F1_score
@@ -15,14 +15,16 @@ parameters:
   batch-size:
     value: 32
   lr:
-    values: [5e-6, 1e-5]
+    value: 1e-5
   vat-loss-weight:
-    values: [0.1, 0.5, 1]
+    values: [0.5, 1]
   vat-loss-radius: 
-    values: [1e-5, 1e-4, 1e-3, 1e-2, 0.1, 1]
+    values: [1e-4, 1e-3, 1e-2]
   step-size:
     values: [5e-4, 1e-3]
   epsilon:
     value: 1e-5
   noise-var:
     value: 5e-5
+  seed:
+    values: [0,1,2,3,4]
