@@ -593,6 +593,7 @@ def train():
         gpus=config.gpus,
         precision=config.precision,
         enable_checkpointing=config.enable_checkpointing,
+        gradient_clip_val=config.grad_clip_value
     )
     trainer.logger.log_hyperparams(config)
     trainer.fit(model=model, datamodule=datamodule)
@@ -633,8 +634,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--enable-checkpointing", type=bool, default=False)
     parser.add_argument("--multithreading", type=bool, default=True)
     parser.add_argument("--max-layer", type=int, default=None)
+    parser.add_argument("--grad-clip-value", type=float, default=None)
     args = parser.parse_args()
     return args
+
+    
 
 
 if __name__ == "__main__":
