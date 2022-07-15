@@ -2,7 +2,7 @@ program: vat_hp_tune.py
 method: bayes
 metric:
   goal: maximize
-  name: val_Accuracy_epoch
+  name: val_custom_F1_score
 parameters:
   vat:
     value: "ALICEPP"
@@ -17,7 +17,7 @@ parameters:
   lr:
     values: [5e-6, 1e-5]
   vat-loss-weight:
-    values: [0.1, 0.5,1]
+    values: [0.1, 0.5, 1]
   vat-loss-radius: 
     values: [1e-5, 1e-4, 1e-3, 1e-2, 0.1, 1]
   step-size:
@@ -26,5 +26,3 @@ parameters:
     value: 1e-5
   noise-var:
     value: 5e-5
-  seed:
-    values: [0,1,2,3,4]
