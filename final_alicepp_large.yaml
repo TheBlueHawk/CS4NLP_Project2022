@@ -4,6 +4,8 @@ metric:
   goal: maximize
   name: val_custom_F1_score
 parameters:
+  train-mode:
+    value: test
   vat:
     value: "ALICEPP"
   pretrained-model:
@@ -17,14 +19,14 @@ parameters:
   lr:
     value: 1e-5
   vat-loss-weight:
-    values: [0.5, 1]
+    value: 1
   vat-loss-radius: 
-    values: [1e-4, 1e-3, 1e-2]
+    value: 1e-3
   step-size:
-    values: [5e-4, 1e-3]
+    value: 5e-4
   epsilon:
     value: 1e-5
   noise-var:
     value: 5e-5
   seed:
-    values: [0,1,2,3,4]
+    values: [0,1,2,3,4,5,6,7,8,9]
