@@ -1,12 +1,14 @@
-This repository allows to reproduce the experiments of the CS4NLP 2022 project of group 1 
-vat-pytorch: A Plug-and-Play library for Virtual Adversarial Training.
+# `vat-pytorch`: A Plug-and-Play library for Virtual Adversarial Training.
+This repository allows to reproduce the experiments of the CS4NLP 2022 project of group 1. 
+This repository doese not include the implementation of the `vat-pytorch` library that can instead be found at https://github.com/archinetai/vat-pytorch
+
 # Installation instructions
 Our repo is tested on Python 3.9
 ## Local installation
 1. Install torch, torchvision, torchtext, torchmetrics following the instructions on https://pytorch.org/get-started/locally
 2. `pip install -r requirements.txt`
 
-## Euler setup
+## Euler installation
 ```bash
 env2lmod
 module load gcc/8.2.0
@@ -26,7 +28,7 @@ wandb sweep final_<model>_<dataset>
 This will produce a `<sweep_ID>` that you can use to distribute the 10 runs on one or more machines using:
 ```bash
 wandb login
-wandb agent `<sweep_ID>`
+wandb agent <sweep_ID>
 ``` 
 
 # Run arbitrary experiments
