@@ -1,4 +1,0 @@
-""python evaluator/evaluator.py eval --test_file dataset/test_9442.tsv --prediction_file roberta_output/eval_outputs_base.txt""
-
-Strict Acc.: 0.43243243243243246
-Avg F1: 0.7176661438464816

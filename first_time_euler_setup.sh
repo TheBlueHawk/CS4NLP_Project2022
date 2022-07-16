@@ -1,10 +1,4 @@
-# Usage: sh full_euler_setup.sh <username> <sweepID>
-
-cd ..
-
-cd ..
-
-cd scratch/$1
+# Usage: sh full_euler_setup.sh <sweepID>
 
 git clone https://github.com/TheBlueHawk/CS4NLP_Project2022.git
 
@@ -24,4 +18,4 @@ pip install -r requirements.txt
 
 wandb login 
 
-bsub -W 23:00 -R "rusage[mem=64000, ngpus_excl_p=1]" -R "select[gpu_mtotal0>=10240]" wandb agent --count 25 $2
+bsub -W 23:00 -R "rusage[mem=64000, ngpus_excl_p=1]" -R "select[gpu_mtotal0>=10240]" wandb agent --count 25 $1
