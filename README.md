@@ -1,67 +1,39 @@
+This repository allows to reproduce the experiments of the CS4NLP 2022 project of group 1 
+vat-pytorch: A Plug-and-Play library for Virtual Adversarial Training.
 # Installation instructions
-
-1. Our repo is tested on Python 3.8.
+Our repo is tested on Python 3.9
+## Local installation
 1. Install torch, torchvision, torchtext, torchmetrics following the instructions on https://pytorch.org/get-started/locally
-1. `pip install -r requirements.txt`
+2. `pip install -r requirements.txt`
 
-# MC-TACO 🌮  (original repository documentation)
-Dataset and code for “Going on a vacation” takes longer than “Going for a walk”: A Study of Temporal Commonsense Understanding EMNLP 2019. ([link](https://arxiv.org/abs/1909.03065))
-
-## Dataset
-We provide the dev/test split as specified in the paper, along with a detailed readme.txt file under `dataset/`
-
-## Leaderboard 
-See the details and instructions at: 
-http://leaderboard.allenai.org/mctaco
-
-## Experiments (WIP)
-At this point, we provide the outputs of the ESIM/BERT baselines. 
-
-To run BERT baseline: 
-
-First install required packages with: 
-```bash 
-pip install -r experiments/bert/requirements.txt
-```
-
-### BERT
-
-Your the following command to reproduce BERT predictions under `./bert_output`: 
+## Euler setup
 ```bash
-sh experiments/bert/run_bert_baseline.sh
-```
-Evaluate the predictions with which you can further evaluate with the following command: 
+env2lmod
+module load gcc/8.2.0
+module load python_gpu/3.8.5
+module load eth_proxy 
+python -m venv venv 
+source venv/bin/activate 
+pip install -r requirements.txt
+``` 
 
-```bash 
-python evaluator/evaluator.py eval --test_file dataset/test_9442.tsv --prediction_file bert_output/eval_outputs.txt
-```
-
-### RoBERTa
-Your the following command to reproduce RoBERTa predictions under `./roberta_output`: 
+# Reproduce final experiments
+To reproduce the final runs over 10 seeds for each model and dataset, you can use the following Weight&Biases command from the root folder:
 ```bash
-sh experiments/roberta/run_roberta_baseline.sh
-```
-
-Evaluate the predictions with which you can further evaluate with the following command: 
-
-```bash 
-python evaluator/evaluator.py eval --test_file dataset/test_9442.tsv --prediction_file roberta_output/eval_outputs_large.txt
-```
-Modify `run_roberta_baseline.sh` to switch between `roberta-base` and `roberta-large`.
-
-### HuggingFace models
-Use the following command to reproduce predictions for any HF model: 
+wandb login
+wandb sweep final_<model>_<dataset>
+``` 
+This will produce a `<sweep_ID>` that you can use to distribute the 10 runs on one or more machines using:
 ```bash
-sh experiments/auto/run_auto_baseline.sh <model-name>
-```
-where `model-name` has to be replaced with the name of the model as it is listed on HuggingFace. Predictions and test scores (EM and F1) will be saved in the directory `./outputs/<model-name>`.
+wandb login
+wandb agent `<sweep_ID>`
+``` 
 
-### ESIM baseline: 
-Releasing soon after some polish
+# Run arbitrary experiments
+You can just run the command `python vat_hp_tune.py` manually passing all the desired arguments like `--pretrained-model`, `--vat`, `--lr`, `--vat-loss-weight` ... More details on the available arguments can be found in the argument parser at the end of the `vat_hp_tune.py` file. If possible, we recommand to set `--precision` to 16, to allow mixed-precision training and obtain significant speedup. 
 
-## Citation
-See the following paper:
-
+# Acknowledgement
+MCTACO paper, that we use to replicate the F1 and exact match metrics:
 ```
 @inproceedings{ZKNR19,
     author = {Ben Zhou, Daniel Khashabi, Qiang Ning and Dan Roth},
@@ -70,3 +42,32 @@ See the following paper:
     year = {2019},
 }
 ```
+
+
+
+We used Weights & Biases for experiment tracking and visualizations to develop insights for this paper.
+```
+@misc{wandb,
+title = {Experiment Tracking with Weights and Biases},
+year = {2020},
+note = {Software available from wandb.com},
+url={https://www.wandb.com/},
+author = {Biewald, Lukas},
+}
+```
+
+We used PyTorch Lightning, a lightweight PyTorch wrapper for high-performance AI research to organize and scale our models without all the associated boilerplate. 
+```
+@article{falcon2019pytorch,
+  title={Pytorch lightning},
+  author={Falcon, William and others},
+  journal={GitHub. Note: https://github.com/PyTorchLightning/pytorch-lightning},
+  volume={3},
+  number={6},
+  year={2019}
+}
+```
+
+We used the transformers library from huggingface (https://github.com/huggingface/transformers) for all of our transformer based models.
+
+
